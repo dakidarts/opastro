@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import curses
 from contextlib import redirect_stdout
 from datetime import date, datetime
+import difflib
 from html import escape as html_escape
+import importlib
 from io import StringIO
 import json
 import os
 import platform
 from pathlib import Path
 import shutil
+import subprocess
 import sys
 import textwrap
 from typing import Any, Optional
@@ -44,6 +48,21 @@ UPSELL_TEXT = "✨ Want deeper insights?\n→ Unlock full readings: https://nume
 DEFAULT_WRAP_WIDTH = 96
 MIN_PYTHON_VERSION = (3, 11)
 OUTPUT_FORMATS = ("text", "json", "markdown", "html")
+COMMAND_ALIASES = {
+    "init": ["onboard"],
+    "welcome": ["home"],
+    "catalog": ["ls"],
+    "doctor": ["diag"],
+    "profile": ["profiles"],
+    "horoscope": ["h"],
+    "birthday": ["bday", "b"],
+    "planet": ["p"],
+    "serve": ["api"],
+    "explain": ["x"],
+    "completion": ["comp", "completions"],
+    "ui": ["tui"],
+    "batch": ["gen"],
+}
 
 
 def _parse_date(raw: str) -> date:
@@ -103,6 +122,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
 
     init = subparsers.add_parser(
         "init",
+        aliases=COMMAND_ALIASES["init"],
         help="Interactive setup for default profile and UX preferences.",
         description="Run guided onboarding to save a reusable default profile.",
     )
@@ -115,6 +135,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
 
     welcome = subparsers.add_parser(
         "welcome",
+        aliases=COMMAND_ALIASES["welcome"],
         help="Show the Opastro home screen and quick command guide.",
         description="Display the branded Opastro welcome UI and command overview.",
     )
@@ -122,6 +143,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
 
     catalog = subparsers.add_parser(
         "catalog",
+        aliases=COMMAND_ALIASES["catalog"],
         help="List supported periods, sections, signs, and planets.",
         description="Print the command catalog for scripting and onboarding.",
     )
@@ -129,13 +151,17 @@ def _build_base_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser(
         "doctor",
+        aliases=COMMAND_ALIASES["doctor"],
         help="Run local environment diagnostics for Opastro.",
         description="Check Python runtime, executable path, and key engine readiness flags.",
     )
+    doctor.add_argument("--fix", action="store_true", help="Attempt automatic fixes for detected dependency/runtime gaps.")
+    doctor.add_argument("--dry-run", action="store_true", help="Show fix commands without executing them.")
     doctor.set_defaults(handler=_handle_doctor)
 
     profile = subparsers.add_parser(
         "profile",
+        aliases=COMMAND_ALIASES["profile"],
         help="Manage saved CLI profiles (save/list/show/use).",
         description="Manage reusable defaults for sign/birth/preferences.",
     )
@@ -177,6 +203,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
 
     horoscope = subparsers.add_parser(
         "horoscope",
+        aliases=COMMAND_ALIASES["horoscope"],
         help="Generate a standard horoscope report.",
         description="Generate deterministic horoscope output for a sign or birth profile.",
     )
@@ -185,6 +212,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
 
     birthday = subparsers.add_parser(
         "birthday",
+        aliases=COMMAND_ALIASES["birthday"],
         help="Generate a birthday-cycle report.",
         description="Generate a yearly birthday-cycle report with lite meanings.",
     )
@@ -193,6 +221,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
 
     planet = subparsers.add_parser(
         "planet",
+        aliases=COMMAND_ALIASES["planet"],
         help="Generate a planet-focused horoscope report.",
         description="Generate a report anchored on one selected planet across the chosen period.",
     )
@@ -207,6 +236,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
 
     serve = subparsers.add_parser(
         "serve",
+        aliases=COMMAND_ALIASES["serve"],
         help="Run the FastAPI service locally.",
         description="Run the Opastro API server for app and integration development.",
     )
@@ -214,6 +244,71 @@ def _build_base_parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000).")
     serve.add_argument("--reload", action="store_true", help="Enable dev reload mode.")
     serve.set_defaults(handler=_handle_serve)
+
+    explain = subparsers.add_parser(
+        "explain",
+        aliases=COMMAND_ALIASES["explain"],
+        help="Explain why each section line appeared (factor provenance).",
+        description="Generate provenance-first output with factor and line rationale.",
+    )
+    explain.add_argument(
+        "--kind",
+        choices=["horoscope", "birthday", "planet"],
+        default="horoscope",
+        help="Report type to explain (default: horoscope).",
+    )
+    explain.add_argument("--period", choices=["daily", "weekly", "monthly", "yearly"], help="Report period.")
+    explain.add_argument("--planet", choices=[p.value for p in PlanetName], help="Planet required for kind=planet.")
+    _add_common_report_args(explain, require_period=False)
+    explain.set_defaults(handler=_handle_explain)
+
+    completion = subparsers.add_parser(
+        "completion",
+        aliases=COMMAND_ALIASES["completion"],
+        help="Print shell completion script.",
+        description="Generate shell completion for bash/zsh/fish.",
+    )
+    completion.add_argument("--shell", choices=["bash", "zsh", "fish"], required=True, help="Target shell.")
+    completion.set_defaults(handler=_handle_completion)
+
+    ui = subparsers.add_parser(
+        "ui",
+        aliases=COMMAND_ALIASES["ui"],
+        help="Interactive TUI report browser with section drill-down.",
+        description="Launch curses-based keyboard UI for report navigation.",
+    )
+    _add_common_report_args(ui, require_period=True)
+    ui.add_argument("--no-interactive", action="store_true", help="Fallback to static text render (no curses).")
+    ui.set_defaults(handler=_handle_ui)
+
+    batch = subparsers.add_parser(
+        "batch",
+        aliases=COMMAND_ALIASES["batch"],
+        help="Batch-generate reports for multiple signs and dates.",
+        description="Run deterministic generation across many sign/date combinations.",
+    )
+    batch.add_argument("--kind", choices=["horoscope", "birthday", "planet"], default="horoscope")
+    batch.add_argument("--period", required=True, choices=["daily", "weekly", "monthly", "yearly"])
+    batch.add_argument("--planet", choices=[p.value for p in PlanetName], help="Required for kind=planet.")
+    batch.add_argument("--signs", help="Comma-separated signs. Defaults to profile sign or all zodiac signs.")
+    batch.add_argument("--target-date", help="Single ISO date YYYY-MM-DD.")
+    batch.add_argument("--date-from", help="Range start ISO date YYYY-MM-DD.")
+    batch.add_argument("--date-to", help="Range end ISO date YYYY-MM-DD.")
+    batch.add_argument("--step-days", type=int, default=1, help="Step days for date ranges (default: 1).")
+    batch.add_argument("--sections", help="Comma-separated sections.")
+    batch.add_argument("--birth-date", help="Birth date in ISO format YYYY-MM-DD.")
+    batch.add_argument("--birth-time", help="Birth time in HH:MM format.")
+    batch.add_argument("--lat", type=float, help="Birth latitude.")
+    batch.add_argument("--lon", type=float, help="Birth longitude.")
+    batch.add_argument("--timezone", help="IANA timezone.")
+    batch.add_argument("--zodiac-system", choices=["sidereal", "tropical"])
+    batch.add_argument("--ayanamsa", choices=["lahiri", "fagan_bradley", "krishnamurti", "raman", "yukteswar"])
+    batch.add_argument("--house-system", choices=["placidus", "whole_sign", "equal", "koch"])
+    batch.add_argument("--node-type", choices=["true", "mean"])
+    batch.add_argument("--tenant-id", help="Tenant identifier.")
+    batch.add_argument("--format", dest="output_format", choices=OUTPUT_FORMATS, default="text")
+    batch.add_argument("--export-dir", help="Directory for per-item exports.")
+    batch.set_defaults(handler=_handle_batch)
 
     return parser
 
@@ -592,6 +687,288 @@ def _render_output(payload, *, output_format: str, export_path: Optional[str] = 
     return 0
 
 
+def _report_to_string(payload, output_format: str) -> str:
+    if output_format == "json":
+        return payload.model_dump_json(indent=2)
+    if output_format == "markdown":
+        return _render_markdown(payload)
+    if output_format == "html":
+        return _render_html(payload)
+    return _render_text_snapshot(payload)
+
+
+def _save_export(content: str, export_path: str) -> Path:
+    target = Path(export_path).expanduser()
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content)
+    return target
+
+
+def _date_range(start: date, end: date, step_days: int = 1) -> list[date]:
+    if step_days <= 0:
+        raise ValueError("--step-days must be greater than 0.")
+    if end < start:
+        raise ValueError("--date-to must be on or after --date-from.")
+    values: list[date] = []
+    current = start
+    while current <= end:
+        values.append(current)
+        current = date.fromordinal(current.toordinal() + step_days)
+    return values
+
+
+def _parse_signs(raw: Optional[str]) -> Optional[list[str]]:
+    if raw is None:
+        return None
+    values = [value.strip().upper() for value in raw.split(",") if value.strip()]
+    for value in values:
+        if value not in ZODIAC_SIGNS:
+            raise ValueError(f"Unsupported zodiac sign: {value}")
+    return values or None
+
+
+def _tip_key_for_period(period: Period) -> str:
+    return {
+        Period.DAILY: "daily_tip",
+        Period.WEEKLY: "weekly_tip",
+        Period.MONTHLY: "monthly_tip",
+        Period.YEARLY: "yearly_tip",
+    }[period]
+
+
+def _build_horoscope_request(args: argparse.Namespace) -> HoroscopeRequest:
+    if not args.period:
+        raise ValueError("--period is required.")
+    return HoroscopeRequest(
+        period=args.period,
+        sign=args.sign,
+        target_date=_parse_date(args.target_date) if args.target_date else None,
+        sections=_parse_sections(args.sections),
+        birth=_build_birth(args),
+        zodiac_system=args.zodiac_system,
+        ayanamsa=args.ayanamsa,
+        house_system=args.house_system,
+        node_type=args.node_type,
+        tenant_id=args.tenant_id,
+    )
+
+
+def _build_birthday_request(args: argparse.Namespace) -> BirthdayHoroscopeRequest:
+    return BirthdayHoroscopeRequest(
+        sign=args.sign,
+        target_date=_parse_date(args.target_date) if args.target_date else None,
+        sections=_parse_sections(args.sections),
+        birth=_build_birth(args),
+        zodiac_system=args.zodiac_system,
+        ayanamsa=args.ayanamsa,
+        house_system=args.house_system,
+        node_type=args.node_type,
+        tenant_id=args.tenant_id,
+    )
+
+
+def _build_planet_request(args: argparse.Namespace) -> PlanetHoroscopeRequest:
+    if not args.period:
+        raise ValueError("--period is required for planet reports.")
+    if not args.planet:
+        raise ValueError("--planet is required for planet reports.")
+    return PlanetHoroscopeRequest(
+        period=args.period,
+        planet=args.planet,
+        sign=args.sign,
+        target_date=_parse_date(args.target_date) if args.target_date else None,
+        sections=_parse_sections(args.sections),
+        birth=_build_birth(args),
+        zodiac_system=args.zodiac_system,
+        ayanamsa=args.ayanamsa,
+        house_system=args.house_system,
+        node_type=args.node_type,
+        tenant_id=args.tenant_id,
+    )
+
+
+def _generate_payload(service: HoroscopeService, args: argparse.Namespace, kind: str):
+    if kind == "birthday":
+        return service.generate_birthday(_build_birthday_request(args))
+    if kind == "planet":
+        return service.generate_planet(_build_planet_request(args))
+    return service.generate(_build_horoscope_request(args))
+
+
+def _line_provenance(lines: list[str], details: list[Any], *, insight_key: str) -> list[dict[str, Any]]:
+    if not lines:
+        return []
+    if not details:
+        return [{"line": line, "source_factors": [], "why": "No factor details available"} for line in lines]
+    sorted_details = sorted(details, key=lambda detail: detail.weight, reverse=True)
+    output: list[dict[str, Any]] = []
+    for idx, line in enumerate(lines):
+        primary = sorted_details[idx % len(sorted_details)]
+        secondary = sorted_details[(idx + 1) % len(sorted_details)]
+        why = primary.factor_insights.get(insight_key) or primary.factor_insights.get("lite_meaning") or ""
+        output.append(
+            {
+                "line": line,
+                "source_factors": [primary.factor_type, secondary.factor_type] if secondary != primary else [primary.factor_type],
+                "why": why,
+            }
+        )
+    return output
+
+
+def _build_explain_payload(payload) -> dict[str, Any]:
+    sections: list[dict[str, Any]] = []
+    for insight in payload.sections:
+        detail_records: list[dict[str, Any]] = []
+        tip_key = _tip_key_for_period(payload.period)
+        for detail in insight.factor_details:
+            detail_records.append(
+                {
+                    "factor_type": detail.factor_type,
+                    "factor_value": detail.factor_value,
+                    "weight": detail.weight,
+                    "why": detail.factor_insights.get("lite_meaning"),
+                    "reflection": detail.factor_insights.get("reflection"),
+                    "caution": detail.factor_insights.get("caution"),
+                    "action_hint": detail.factor_insights.get(tip_key) or detail.factor_insights.get("affirmation"),
+                }
+            )
+
+        sections.append(
+            {
+                "section": insight.section.value,
+                "title": insight.title,
+                "intensity": insight.intensity,
+                "summary": {
+                    "line": insight.summary,
+                    "source_factors": [d.factor_type for d in sorted(insight.factor_details, key=lambda x: x.weight, reverse=True)[:3]],
+                    "why": "Summary is composed from highest-weighted factor details with deterministic cadence templates.",
+                },
+                "highlights": _line_provenance(insight.highlights, insight.factor_details, insight_key="motivation"),
+                "cautions": _line_provenance(insight.cautions, insight.factor_details, insight_key="caution"),
+                "actions": _line_provenance(insight.actions, insight.factor_details, insight_key=tip_key),
+                "factors": detail_records,
+                "scores": insight.scores,
+            }
+        )
+    return {
+        "report_type": payload.report_type.value,
+        "sign": payload.sign,
+        "period": payload.period.value,
+        "window": {"start": payload.start.isoformat(), "end": payload.end.isoformat()},
+        "sections": sections,
+    }
+
+
+def _render_explain_text(explain_payload: dict[str, Any]) -> str:
+    lines: list[str] = []
+    lines.append("OPASTRO EXPLAIN")
+    lines.append("-" * min(96, _term_width()))
+    lines.append(
+        f"Type: {explain_payload['report_type']} | Sign: {explain_payload['sign']} | Period: {explain_payload['period']}"
+    )
+    lines.append("")
+    for section in explain_payload["sections"]:
+        lines.append(f"{section['section'].replace('_', ' ').title()} ({section['intensity']})")
+        lines.append(f"  Summary: {section['summary']['line']}")
+        lines.append(f"  Why: {section['summary']['why']}")
+        lines.append(f"  Source factors: {', '.join(section['summary']['source_factors'])}")
+        if section["highlights"]:
+            lines.append("  Highlights provenance:")
+            for item in section["highlights"][:3]:
+                lines.append(f"    - {item['line']}")
+                lines.append(f"      factors: {', '.join(item['source_factors'])}")
+        if section["factors"]:
+            lines.append("  Factor drivers:")
+            for factor in section["factors"][:6]:
+                lines.append(
+                    f"    - {factor['factor_type']}={factor['factor_value']} (w={factor['weight']:.2f}) -> {factor['why']}"
+                )
+        lines.append("")
+    return "\n".join(lines).strip() + "\n"
+
+
+def _render_explain_markdown(explain_payload: dict[str, Any]) -> str:
+    lines: list[str] = ["# OPASTRO EXPLAIN", ""]
+    lines.append(
+        f"- **Type:** `{explain_payload['report_type']}`  "
+        f"- **Sign:** `{explain_payload['sign']}`  "
+        f"- **Period:** `{explain_payload['period']}`"
+    )
+    lines.append("")
+    for section in explain_payload["sections"]:
+        lines.append(f"## {section['section'].replace('_', ' ').title()} ({section['intensity']})")
+        lines.append("")
+        lines.append(f"**Summary line**: {section['summary']['line']}")
+        lines.append("")
+        lines.append(f"**Why**: {section['summary']['why']}")
+        lines.append("")
+        lines.append(f"**Source factors**: {', '.join('`'+f+'`' for f in section['summary']['source_factors'])}")
+        lines.append("")
+        if section["factors"]:
+            lines.append("### Factor Provenance")
+            for factor in section["factors"]:
+                lines.append(
+                    f"- `{factor['factor_type']}={factor['factor_value']}` (w={factor['weight']:.2f}) — {factor['why']}"
+                )
+            lines.append("")
+    return "\n".join(lines)
+
+
+def _render_explain_html(explain_payload: dict[str, Any]) -> str:
+    body = []
+    for section in explain_payload["sections"]:
+        factors = "".join(
+            f"<li><code>{html_escape(f['factor_type'])}={html_escape(str(f['factor_value']))}</code> "
+            f"(w={f['weight']:.2f}) — {html_escape(f.get('why') or '')}</li>"
+            for f in section["factors"]
+        )
+        body.append(
+            f"""
+            <section class="card">
+              <h2>{html_escape(section['section'].replace('_', ' ').title())} <span class="pill">{html_escape(section['intensity'])}</span></h2>
+              <p><strong>Summary:</strong> {html_escape(section['summary']['line'])}</p>
+              <p><strong>Why:</strong> {html_escape(section['summary']['why'])}</p>
+              <p><strong>Source factors:</strong> {html_escape(', '.join(section['summary']['source_factors']))}</p>
+              <h3>Factor Provenance</h3>
+              <ul>{factors}</ul>
+            </section>
+            """
+        )
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Opastro Explain</title>
+<style>
+body{{font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f6f8fc;color:#0f172a;margin:0}}
+main{{max-width:960px;margin:0 auto;padding:24px 16px}}
+.card{{background:#fff;border-radius:12px;padding:16px;margin-bottom:12px;box-shadow:0 8px 20px rgba(15,23,42,.08)}}
+h1{{color:#0f766e}} .pill{{font-size:12px;background:#e7fffb;color:#0f766e;padding:2px 7px;border-radius:999px}}
+</style></head><body><main>
+<h1>OPASTRO EXPLAIN</h1>
+<p><strong>Type:</strong> {html_escape(explain_payload['report_type'])} |
+<strong>Sign:</strong> {html_escape(explain_payload['sign'])} |
+<strong>Period:</strong> {html_escape(explain_payload['period'])}</p>
+{''.join(body)}
+</main></body></html>"""
+
+
+def _render_explain_output(explain_payload: dict[str, Any], *, output_format: str, export_path: Optional[str]) -> int:
+    if output_format == "json":
+        rendered = json.dumps(explain_payload, indent=2, sort_keys=True)
+    elif output_format == "markdown":
+        rendered = _render_explain_markdown(explain_payload)
+    elif output_format == "html":
+        rendered = _render_explain_html(explain_payload)
+    else:
+        rendered = _render_explain_text(explain_payload)
+
+    print(rendered)
+    if export_path:
+        target = _save_export(rendered, export_path)
+        print(f"saved output to {target}", file=sys.stderr)
+    return 0
+
+
 def _show_welcome() -> int:
     print(_style(WELCOME_BANNER.strip("\n"), "1;34"))
     print(_style("OPASTRO • Open Core Horoscope Engine", "1;36"))
@@ -607,6 +984,10 @@ def _show_welcome() -> int:
         ("horoscope", "Generate a standard period report from sign or birth data."),
         ("birthday", "Generate a yearly birthday-cycle report."),
         ("planet", "Generate a planet-focused report for deeper diagnostics."),
+        ("explain", "Show factor provenance for each section line."),
+        ("completion", "Print shell completion scripts for bash/zsh/fish."),
+        ("ui", "Launch keyboard-driven interactive report browser."),
+        ("batch", "Generate reports across multiple signs and dates."),
         ("serve", "Run the local FastAPI service for integrations."),
     ]
     for name, desc in commands:
@@ -641,7 +1022,42 @@ def _handle_catalog(_: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_doctor(_: argparse.Namespace) -> int:
+def _dependency_health() -> tuple[list[str], list[str]]:
+    modules = {
+        "fastapi": "fastapi",
+        "pydantic": "pydantic",
+        "uvicorn": "uvicorn",
+        "redis": "redis",
+        "swisseph": "swisseph",
+    }
+    missing: list[str] = []
+    ok: list[str] = []
+    for import_name, label in modules.items():
+        try:
+            importlib.import_module(import_name)
+            ok.append(label)
+        except Exception:
+            missing.append(label)
+    return missing, ok
+
+
+def _doctor_fix(args: argparse.Namespace) -> None:
+    command = [sys.executable, "-m", "pip", "install", "-e", ".[dev]"]
+    if args.dry_run:
+        print(f"Fix plan      : {' '.join(command)}")
+        return
+    print("Applying fix  : Installing project dependencies...")
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode == 0:
+        print(_style("Fix result    : OK (dependencies installed)", "1;32"))
+    else:
+        print(_style(f"Fix result    : WARN (pip exited {result.returncode})", "1;33"))
+        stderr_preview = "\n".join(result.stderr.splitlines()[-5:])
+        if stderr_preview:
+            print(stderr_preview)
+
+
+def _handle_doctor(args: argparse.Namespace) -> int:
     cfg = ServiceConfig()
     _print_heading("OPASTRO DOCTOR")
     _print_divider()
@@ -651,13 +1067,34 @@ def _handle_doctor(_: argparse.Namespace) -> int:
     print(f"Ephemeris path : {cfg.ephemeris.ephemeris_path or 'auto/not-set'}")
     print(f"Zodiac system  : {cfg.ephemeris.zodiac_system}")
     print(f"Ayanamsa       : {cfg.ephemeris.ayanamsa_system}")
+    print(f"Virtual env    : {'yes' if sys.prefix != sys.base_prefix else 'no'}")
+
     required = f"{MIN_PYTHON_VERSION[0]}.{MIN_PYTHON_VERSION[1]}+"
+    runtime_ok = sys.version_info >= MIN_PYTHON_VERSION
     if sys.version_info >= MIN_PYTHON_VERSION:
         print(_style(f"Runtime check  : OK (Python {required} requirement satisfied)", "1;32"))
     else:
         current = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
         print(_style(f"Runtime check  : WARN (running {current}; requires {required})", "1;33"))
         print("Recommendation : Use a Python 3.11+ virtual environment and reinstall opastro.")
+
+    missing_deps, ok_deps = _dependency_health()
+    print(f"Deps loaded    : {', '.join(ok_deps) if ok_deps else 'none'}")
+    if missing_deps:
+        print(_style(f"Deps missing   : {', '.join(missing_deps)}", "1;33"))
+    else:
+        print(_style("Deps check     : OK", "1;32"))
+
+    if args.fix:
+        _doctor_fix(args)
+        after_missing, _ = _dependency_health()
+        if not after_missing:
+            print(_style("Post-fix check : OK", "1;32"))
+        else:
+            print(_style(f"Post-fix check : WARN (still missing: {', '.join(after_missing)})", "1;33"))
+    elif missing_deps or not runtime_ok:
+        print("Suggestion     : Run `opastro doctor --fix --dry-run` to preview automatic remediation.")
+
     return 0
 
 
@@ -897,21 +1334,257 @@ def _handle_profile_save(args: argparse.Namespace) -> int:
     return 0
 
 
+def _completion_tokens() -> list[str]:
+    tokens: list[str] = []
+    for command, aliases in COMMAND_ALIASES.items():
+        tokens.append(command)
+        tokens.extend(aliases)
+    return sorted(set(tokens))
+
+
+def _completion_script(shell: str) -> str:
+    words = " ".join(_completion_tokens())
+    if shell == "bash":
+        return textwrap.dedent(
+            f"""
+            _opastro_complete() {{
+              local cur="${{COMP_WORDS[COMP_CWORD]}}"
+              COMPREPLY=( $(compgen -W "{words}" -- "$cur") )
+            }}
+            complete -F _opastro_complete opastro
+            """
+        ).strip()
+    if shell == "zsh":
+        return textwrap.dedent(
+            f"""
+            #compdef opastro
+            _opastro() {{
+              local -a commands
+              commands=({words})
+              _describe 'command' commands
+            }}
+            compdef _opastro opastro
+            """
+        ).strip()
+    return textwrap.dedent(
+        f"""
+        function __fish_opastro_complete
+            set -l cmd (commandline -opc)
+            if test (count $cmd) -eq 1
+                for c in {words}
+                    echo $c
+                end
+            end
+        end
+        complete -f -c opastro -a "(__fish_opastro_complete)"
+        """
+    ).strip()
+
+
+def _handle_completion(args: argparse.Namespace) -> int:
+    print(_completion_script(args.shell))
+    return 0
+
+
+def _handle_explain(args: argparse.Namespace) -> int:
+    _apply_profile_defaults(args)
+    kind = args.kind
+    if kind in ("horoscope", "planet") and not args.period:
+        raise ValueError("--period is required for explain kind horoscope/planet.")
+    if kind == "planet" and not args.planet:
+        raise ValueError("--planet is required for explain kind planet.")
+
+    service = HoroscopeService(ServiceConfig())
+    payload = _generate_payload(service, args, kind)
+    explain_payload = _build_explain_payload(payload)
+    return _render_explain_output(
+        explain_payload,
+        output_format=_resolve_output_format(args),
+        export_path=args.export,
+    )
+
+
+def _wrap_for_width(text: str, width: int) -> list[str]:
+    if width <= 4:
+        return [text[: max(1, width)]]
+    parts = textwrap.wrap(text, width=width, break_long_words=False, replace_whitespace=False)
+    return parts if parts else [""]
+
+
+def _run_ui(payload) -> int:
+    sections = payload.sections
+    if not sections:
+        print("No sections available for UI rendering.")
+        return 0
+
+    def _ui(stdscr) -> None:
+        curses.curs_set(0)
+        selected = 0
+        show_factors = False
+
+        while True:
+            stdscr.erase()
+            height, width = stdscr.getmaxyx()
+            left_w = max(22, min(36, width // 3))
+            right_x = left_w + 2
+            right_w = max(20, width - right_x - 1)
+
+            header = f"OPASTRO UI | {payload.sign} | {payload.period.value} | q:quit ↑↓:navigate enter:toggle factors"
+            stdscr.addnstr(0, 0, header, width - 1, curses.A_BOLD)
+            stdscr.hline(1, 0, ord("-"), width - 1)
+
+            for idx, section in enumerate(sections):
+                label = f"{section.section.value.replace('_', ' ').title()} ({section.intensity})"
+                attr = curses.A_REVERSE if idx == selected else curses.A_NORMAL
+                stdscr.addnstr(2 + idx, 0, label, left_w - 1, attr)
+
+            for row in range(2, height - 1):
+                stdscr.addch(row, left_w, ord("|"))
+
+            section = sections[selected]
+            lines: list[str] = []
+            lines.append(section.title)
+            lines.append("")
+            lines.extend(_wrap_for_width(section.summary, right_w))
+            lines.append("")
+            lines.append("Highlights:")
+            for item in section.highlights[:3]:
+                lines.extend(_wrap_for_width(f"- {item}", right_w))
+            lines.append("")
+            lines.append("Cautions:")
+            for item in section.cautions[:2]:
+                lines.extend(_wrap_for_width(f"- {item}", right_w))
+            lines.append("")
+            lines.append("Actions:")
+            for item in section.actions[:2]:
+                lines.extend(_wrap_for_width(f"- {item}", right_w))
+
+            if show_factors:
+                lines.append("")
+                lines.append("Factor drill-down:")
+                for detail in section.factor_details[:8]:
+                    desc = detail.factor_insights.get("lite_meaning") or ""
+                    lines.extend(_wrap_for_width(f"- {detail.factor_type}={detail.factor_value} ({detail.weight:.2f})", right_w))
+                    if desc:
+                        lines.extend(_wrap_for_width(f"  {desc}", right_w))
+
+            for idx, line in enumerate(lines):
+                y = 2 + idx
+                if y >= height - 1:
+                    break
+                stdscr.addnstr(y, right_x, line, right_w)
+
+            stdscr.refresh()
+            key = stdscr.getch()
+            if key in (ord("q"), 27):
+                break
+            if key in (curses.KEY_UP, ord("k")):
+                selected = (selected - 1) % len(sections)
+            elif key in (curses.KEY_DOWN, ord("j")):
+                selected = (selected + 1) % len(sections)
+            elif key in (10, 13, curses.KEY_ENTER):
+                show_factors = not show_factors
+
+    curses.wrapper(_ui)
+    return 0
+
+
+def _handle_ui(args: argparse.Namespace) -> int:
+    _apply_profile_defaults(args)
+    service = HoroscopeService(ServiceConfig())
+    payload = service.generate(_build_horoscope_request(args))
+
+    if args.no_interactive or not sys.stdout.isatty():
+        print("UI fallback mode (non-interactive). Use without --no-interactive in a TTY terminal.")
+        return _render_output(payload, output_format="text", export_path=args.export)
+
+    try:
+        return _run_ui(payload)
+    except curses.error:
+        print("UI unavailable in this terminal. Falling back to text output.")
+        return _render_output(payload, output_format="text", export_path=args.export)
+
+
+def _resolve_batch_signs(args: argparse.Namespace) -> list[str]:
+    explicit = _parse_signs(args.signs)
+    if explicit:
+        return explicit
+    if args.sign:
+        normalized = _normalize_sign(args.sign)
+        if normalized:
+            return [normalized]
+    return list(ZODIAC_SIGNS)
+
+
+def _resolve_batch_dates(args: argparse.Namespace) -> list[date]:
+    if args.target_date and (args.date_from or args.date_to):
+        raise ValueError("Use either --target-date or --date-from/--date-to, not both.")
+    if args.target_date:
+        return [_parse_date(args.target_date)]
+    if args.date_from or args.date_to:
+        if not args.date_from or not args.date_to:
+            raise ValueError("Both --date-from and --date-to are required for date ranges.")
+        return _date_range(_parse_date(args.date_from), _parse_date(args.date_to), args.step_days)
+    return [date.today()]
+
+
+def _batch_extension(fmt: str) -> str:
+    return {"text": ".txt", "json": ".json", "markdown": ".md", "html": ".html"}[fmt]
+
+
+def _handle_batch(args: argparse.Namespace) -> int:
+    _apply_profile_defaults(args)
+    if args.kind == "planet" and not args.planet:
+        raise ValueError("--planet is required for kind=planet.")
+
+    service = HoroscopeService(ServiceConfig())
+    signs = _resolve_batch_signs(args)
+    dates = _resolve_batch_dates(args)
+
+    exports: list[str] = []
+    rendered_blobs: list[str] = []
+    json_rows: list[dict[str, Any]] = []
+    for target in dates:
+        for sign in signs:
+            item_args = argparse.Namespace(**vars(args))
+            item_args.sign = sign
+            item_args.target_date = target.isoformat()
+            payload = _generate_payload(service, item_args, args.kind)
+
+            if args.output_format == "json" and not args.export_dir:
+                json_rows.append(payload.model_dump(mode="json"))
+                continue
+
+            rendered = _report_to_string(payload, args.output_format)
+            if args.export_dir:
+                ext = _batch_extension(args.output_format)
+                filename = f"{args.kind}_{payload.period.value}_{payload.sign}_{target.isoformat()}{ext}"
+                target_path = Path(args.export_dir).expanduser() / filename
+                _save_export(rendered, str(target_path))
+                exports.append(str(target_path))
+            else:
+                rendered_blobs.append(
+                    f"=== {args.kind.upper()} {payload.sign} {payload.period.value} {target.isoformat()} ===\n{rendered}"
+                )
+
+    if args.output_format == "json" and not args.export_dir:
+        print(json.dumps(json_rows, indent=2))
+    elif rendered_blobs:
+        print("\n\n".join(rendered_blobs))
+
+    print(
+        f"batch summary: generated={len(signs) * len(dates)} signs={len(signs)} dates={len(dates)} kind={args.kind}",
+        file=sys.stderr,
+    )
+    if exports:
+        print(f"batch export: wrote {len(exports)} files to {Path(args.export_dir).expanduser()}", file=sys.stderr)
+    return 0
+
+
 def _handle_horoscope(args: argparse.Namespace) -> int:
     _apply_profile_defaults(args)
     service = HoroscopeService(ServiceConfig())
-    request = HoroscopeRequest(
-        period=args.period,
-        sign=args.sign,
-        target_date=_parse_date(args.target_date) if args.target_date else None,
-        sections=_parse_sections(args.sections),
-        birth=_build_birth(args),
-        zodiac_system=args.zodiac_system,
-        ayanamsa=args.ayanamsa,
-        house_system=args.house_system,
-        node_type=args.node_type,
-        tenant_id=args.tenant_id,
-    )
+    request = _build_horoscope_request(args)
     return _render_output(
         service.generate(request),
         output_format=_resolve_output_format(args),
@@ -922,17 +1595,7 @@ def _handle_horoscope(args: argparse.Namespace) -> int:
 def _handle_birthday(args: argparse.Namespace) -> int:
     _apply_profile_defaults(args)
     service = HoroscopeService(ServiceConfig())
-    request = BirthdayHoroscopeRequest(
-        sign=args.sign,
-        target_date=_parse_date(args.target_date) if args.target_date else None,
-        sections=_parse_sections(args.sections),
-        birth=_build_birth(args),
-        zodiac_system=args.zodiac_system,
-        ayanamsa=args.ayanamsa,
-        house_system=args.house_system,
-        node_type=args.node_type,
-        tenant_id=args.tenant_id,
-    )
+    request = _build_birthday_request(args)
     return _render_output(
         service.generate_birthday(request),
         output_format=_resolve_output_format(args),
@@ -943,19 +1606,7 @@ def _handle_birthday(args: argparse.Namespace) -> int:
 def _handle_planet(args: argparse.Namespace) -> int:
     _apply_profile_defaults(args)
     service = HoroscopeService(ServiceConfig())
-    request = PlanetHoroscopeRequest(
-        period=args.period,
-        planet=args.planet,
-        sign=args.sign,
-        target_date=_parse_date(args.target_date) if args.target_date else None,
-        sections=_parse_sections(args.sections),
-        birth=_build_birth(args),
-        zodiac_system=args.zodiac_system,
-        ayanamsa=args.ayanamsa,
-        house_system=args.house_system,
-        node_type=args.node_type,
-        tenant_id=args.tenant_id,
-    )
+    request = _build_planet_request(args)
     return _render_output(
         service.generate_planet(request),
         output_format=_resolve_output_format(args),
@@ -968,11 +1619,31 @@ def _handle_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def _known_command_tokens() -> list[str]:
+    tokens: list[str] = []
+    for command, aliases in COMMAND_ALIASES.items():
+        tokens.append(command)
+        tokens.extend(aliases)
+    return sorted(set(tokens))
+
+
+def _suggest_command(token: str) -> str:
+    suggestions = difflib.get_close_matches(token, _known_command_tokens(), n=3, cutoff=0.45)
+    if suggestions:
+        return f"Unknown command '{token}'. Did you mean: {', '.join(suggestions)}?"
+    return f"Unknown command '{token}'. Run `opastro --help`."
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
     parser = _build_base_parser()
     if not raw_argv:
         return _show_welcome()
+
+    first = raw_argv[0]
+    if not first.startswith("-") and first not in _known_command_tokens():
+        print(_suggest_command(first), file=sys.stderr)
+        return 2
 
     args = parser.parse_args(raw_argv)
     try:

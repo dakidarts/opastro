@@ -27,6 +27,13 @@ opastro init
 opastro profile list
 ```
 
+## Enable Completions
+
+```bash
+opastro completion --shell bash
+# or: zsh / fish
+```
+
 ## Generate Reports
 
 ### Daily sign-mode
@@ -58,6 +65,24 @@ opastro horoscope --period monthly --sign TAURUS --json
 
 ```bash
 opastro horoscope --period daily --sign ARIES --format markdown --export reports/aries.md
+```
+
+### Explain mode (line provenance)
+
+```bash
+opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-04-03 --json
+```
+
+### Interactive UI
+
+```bash
+opastro ui --period daily --sign ARIES --target-date 2026-04-03
+```
+
+### Batch mode
+
+```bash
+opastro batch --kind horoscope --period daily --signs ARIES,TAURUS --date-from 2026-04-03 --date-to 2026-04-05 --format markdown --export-dir reports/batch
 ```
 
 ## Run API

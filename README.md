@@ -66,6 +66,10 @@ opastro
 | `opastro horoscope` | Generate standard reports (daily/weekly/monthly/yearly) |
 | `opastro birthday` | Generate birthday-cycle yearly report |
 | `opastro planet` | Generate planet-focused report |
+| `opastro explain` | Show why each section line appeared (factor provenance) |
+| `opastro completion --shell ...` | Generate shell completion scripts |
+| `opastro ui` | Launch interactive TUI with section drill-down |
+| `opastro batch` | Multi-sign / multi-date report generation |
 | `opastro serve` | Run local FastAPI app |
 
 ### Report Flags
@@ -98,6 +102,15 @@ opastro profile save --name work --sign ARIES --format markdown --set-active
 
 # Switch active profile
 opastro profile use work
+
+# Explain why lines appeared
+opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-04-03 --format markdown
+
+# Interactive TUI
+opastro ui --period daily --sign ARIES --target-date 2026-04-03
+
+# Batch generation
+opastro batch --kind horoscope --period daily --signs ARIES,TAURUS --date-from 2026-04-03 --date-to 2026-04-05 --format markdown --export-dir reports/batch
 
 # Daily sign-mode
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
@@ -166,6 +179,21 @@ curl -X POST http://127.0.0.1:8000/horoscope \
 | `CONTENT_HEALTHCHECK_DISABLE` | `0` | Skip startup content/schema check |
 | `CONTENT_HEALTHCHECK_FAIL_FAST` | `0` | Raise startup error when health check issues are found |
 | `PREGEN_TOKEN` | unset | Protect `/admin/pregenerate` with `X-Admin-Token` |
+
+## Developer UX Extras
+
+```bash
+# Diagnose and preview auto-fixes
+opastro doctor --fix --dry-run
+
+# Apply auto-fixes (installs editable package + deps)
+opastro doctor --fix
+
+# Generate shell completions
+opastro completion --shell bash
+opastro completion --shell zsh
+opastro completion --shell fish
+```
 
 ## Testing
 

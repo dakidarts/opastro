@@ -23,6 +23,20 @@ python3 -m pip install -e .
 which opastro
 ```
 
+### Mistyped command names
+
+Symptom:
+- `Unknown command 'horoscpoe'`
+
+Behavior:
+- CLI now returns close-match suggestions.
+
+Example:
+```bash
+opastro horoscpoe
+# Unknown command 'horoscpoe'. Did you mean: horoscope?
+```
+
 ### `Runtime check : WARN` in `opastro doctor`
 
 Cause:
@@ -35,6 +49,13 @@ python3 --version
 which python3
 python3 -m pip install -e .
 opastro doctor
+```
+
+Auto-remediation:
+
+```bash
+opastro doctor --fix --dry-run
+opastro doctor --fix
 ```
 
 ### `ModuleNotFoundError: No module named 'horoscope_engine'`

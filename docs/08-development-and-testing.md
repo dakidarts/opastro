@@ -34,10 +34,15 @@ PYTHONPATH=src python3 -m pytest -q tests/test_healthcheck.py
 opastro
 opastro catalog
 opastro doctor
+opastro doctor --fix --dry-run
 opastro profile list
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03 --json
 opastro horoscope --period daily --sign ARIES --format markdown --export /tmp/aries.md
+opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-04-03 --json
+opastro completion --shell bash
+opastro ui --period daily --sign ARIES --target-date 2026-04-03 --no-interactive
+opastro batch --kind horoscope --period daily --signs ARIES,TAURUS --target-date 2026-04-03 --format json
 ```
 
 ## API Dev Run

@@ -38,7 +38,6 @@ This docs set tracks the current open-core codebase and CLI.
 
 - [06-content-pipeline.md](./06-content-pipeline.md)
 
-## Active Internal Task Notes
+## Internal Tasks
 
-- [tasks/open-core-renderer-voice-rewrite.md](./tasks/open-core-renderer-voice-rewrite.md)
-- [13-cli-ux-roadmap.md](./13-cli-ux-roadmap.md)
+Task planning notes are kept under `docs/tasks/` as local, untracked working files.
