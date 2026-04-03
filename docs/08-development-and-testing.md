@@ -9,8 +9,7 @@
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-python3 -m pip install -e .
-python3 -m pip install -r requirements-dev.txt
+python3 -m pip install -e ".[dev]"
 ```
 
 ## Run Tests
@@ -35,8 +34,10 @@ PYTHONPATH=src python3 -m pytest -q tests/test_healthcheck.py
 opastro
 opastro catalog
 opastro doctor
+opastro profile list
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03 --json
+opastro horoscope --period daily --sign ARIES --format markdown --export /tmp/aries.md
 ```
 
 ## API Dev Run

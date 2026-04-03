@@ -20,6 +20,13 @@ opastro
 
 This opens the main welcome UI with command overview.
 
+## Save Defaults (Recommended)
+
+```bash
+opastro init
+opastro profile list
+```
+
 ## Generate Reports
 
 ### Daily sign-mode
@@ -45,6 +52,12 @@ opastro horoscope \
 
 ```bash
 opastro horoscope --period monthly --sign TAURUS --json
+```
+
+### Markdown export mode
+
+```bash
+opastro horoscope --period daily --sign ARIES --format markdown --export reports/aries.md
 ```
 
 ## Run API

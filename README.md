@@ -58,6 +58,8 @@ opastro
 | Command | Description |
 |---|---|
 | `opastro` | Main welcome UI with OPASTRO ASCII banner + quick start |
+| `opastro init` | Interactive onboarding to create/update a default profile |
+| `opastro profile ...` | Manage saved profiles (`save`, `list`, `show`, `use`) |
 | `opastro welcome` | Show welcome UI explicitly |
 | `opastro catalog` | List periods, sections, signs, and planets |
 | `opastro doctor` | Runtime diagnostics (python path, platform, ephemeris mode) |
@@ -82,10 +84,21 @@ opastro
 - `--node-type {true,mean}`
 - `--tenant-id <id>`
 - `--json`
+- `--format {text,json,markdown,html}`
+- `--export <path>`
 
 ### CLI Examples
 
 ```bash
+# Interactive setup (creates active default profile)
+opastro init
+
+# Save profile defaults without prompts
+opastro profile save --name work --sign ARIES --format markdown --set-active
+
+# Switch active profile
+opastro profile use work
+
 # Daily sign-mode
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
 
@@ -107,6 +120,9 @@ opastro planet --period monthly --planet mercury --sign TAURUS --target-date 202
 
 # Raw JSON output
 opastro horoscope --period weekly --sign LEO --json
+
+# Export markdown report
+opastro horoscope --period daily --sign ARIES --format markdown --export reports/aries.md
 ```
 
 ## API
@@ -154,6 +170,7 @@ curl -X POST http://127.0.0.1:8000/horoscope \
 ## Testing
 
 ```bash
+python3 -m pip install -e ".[dev]"
 PYTHONPATH=src python3 -m pytest -q
 ```
 

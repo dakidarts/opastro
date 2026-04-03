@@ -41,3 +41,4 @@ This docs set tracks the current open-core codebase and CLI.
 ## Active Internal Task Notes
 
 - [tasks/open-core-renderer-voice-rewrite.md](./tasks/open-core-renderer-voice-rewrite.md)
+- [13-cli-ux-roadmap.md](./13-cli-ux-roadmap.md)
