@@ -234,6 +234,106 @@ python3 -m twine upload dist/*
 
 Start here: [docs/README.md](docs/README.md)
 
+## Python Library Examples
+
+### 1) Basic Daily Report (Sign Mode)
+
+```python
+from datetime import date
+
+from horoscope_engine.config import ServiceConfig
+from horoscope_engine.models import HoroscopeRequest, Period
+from horoscope_engine.service import HoroscopeService
+
+service = HoroscopeService(ServiceConfig())
+
+response = service.generate(
+    HoroscopeRequest(
+        period=Period.DAILY,
+        sign="ARIES",
+        target_date=date(2026, 4, 3),
+    )
+)
+
+print(response.report_type.value, response.sign, response.period.value)
+for section in response.sections:
+    print(f"[{section.section.value}] {section.summary}")
+```
+
+### 2) Personalized Report (Birth + Coordinates)
+
+```python
+from datetime import date
+
+from horoscope_engine.config import ServiceConfig
+from horoscope_engine.models import BirthData, Coordinates, HoroscopeRequest, Period
+from horoscope_engine.service import HoroscopeService
+
+service = HoroscopeService(ServiceConfig())
+
+response = service.generate(
+    HoroscopeRequest(
+        period=Period.WEEKLY,
+        target_date=date(2026, 4, 3),
+        birth=BirthData(
+            date=date(1992, 6, 15),
+            time="09:30",
+            coordinates=Coordinates(latitude=4.0511, longitude=9.7679),
+            timezone="Africa/Douala",
+        ),
+    )
+)
+
+print(response.sign)
+print(response.data.snapshot.rising_sign)
+print(response.data.snapshot.house_cusps)
+```
+
+### 3) Planet-Focused Report
+
+```python
+from datetime import date
+
+from horoscope_engine.config import ServiceConfig
+from horoscope_engine.models import Period, PlanetHoroscopeRequest, PlanetName
+from horoscope_engine.service import HoroscopeService
+
+service = HoroscopeService(ServiceConfig())
+
+response = service.generate_planet(
+    PlanetHoroscopeRequest(
+        period=Period.MONTHLY,
+        planet=PlanetName.MERCURY,
+        sign="TAURUS",
+        target_date=date(2026, 4, 3),
+    )
+)
+
+print(response.report_type.value)
+print(response.sections[0].title)
+```
+
+### 4) JSON Serialization
+
+```python
+from datetime import date
+
+from horoscope_engine.config import ServiceConfig
+from horoscope_engine.models import HoroscopeRequest, Period
+from horoscope_engine.service import HoroscopeService
+
+service = HoroscopeService(ServiceConfig())
+payload = service.generate(
+    HoroscopeRequest(period=Period.DAILY, sign="LEO", target_date=date(2026, 4, 3))
+).model_dump(mode="json")
+
+print(payload["report_type"], payload["period"], payload["sign"])
+```
+
+### Want Premium Narrative Depth?
+
+Unlock richer editorial readings and premium API access: [numerologyapi.com](https://numerologyapi.com)
+
 ---
 
 <p align="center">
