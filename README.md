@@ -37,7 +37,13 @@ Richer premium narrative packs are available via [numerologyapi.com](https://num
 
 - Python `3.11+`
 
-## Install (Editable)
+## Install (PyPI)
+
+```bash
+python3 -m pip install opastro
+```
+
+## Install (Editable, Contributors)
 
 ```bash
 python3 -m venv .venv
@@ -200,6 +206,28 @@ opastro completion --shell fish
 ```bash
 python3 -m pip install -e ".[dev]"
 PYTHONPATH=src python3 -m pytest -q
+```
+
+## Build And Publish (PyPI)
+
+```bash
+# One-time tooling
+python3 -m pip install -U build twine
+
+# Clean old artifacts
+rm -rf dist build src/*.egg-info
+
+# Build wheel + sdist
+python3 -m build
+
+# Validate package metadata/rendering
+python3 -m twine check dist/*
+
+# Optional safety pass: upload to TestPyPI first
+python3 -m twine upload --repository testpypi dist/*
+
+# Production upload
+python3 -m twine upload dist/*
 ```
 
 ## Docs

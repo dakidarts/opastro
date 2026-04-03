@@ -14,6 +14,12 @@
 
 This docs set tracks the current open-core codebase and CLI.
 
+Install from PyPI:
+
+```bash
+python3 -m pip install opastro
+```
+
 ## Quick Navigation
 
 1. [01-quickstart.md](./01-quickstart.md)

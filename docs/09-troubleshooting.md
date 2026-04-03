@@ -19,6 +19,8 @@ Fix:
 
 ```bash
 source .venv/bin/activate
+python3 -m pip install opastro
+# or editable install when working from source:
 python3 -m pip install -e .
 which opastro
 ```
@@ -47,6 +49,8 @@ Fix:
 ```bash
 python3 --version
 which python3
+python3 -m pip install opastro
+# or editable install when working from source:
 python3 -m pip install -e .
 opastro doctor
 ```
@@ -66,6 +70,8 @@ Cause:
 Fix:
 
 ```bash
+python3 -m pip install opastro
+# or editable install when working from source:
 python3 -m pip install -e .
 # or, for direct module runs:
 PYTHONPATH=src python3 -m uvicorn horoscope_engine.main:app --reload

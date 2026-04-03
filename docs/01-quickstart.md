@@ -4,7 +4,13 @@
 
 - Python `3.11+`
 
-## Install
+## Install (PyPI, Recommended)
+
+```bash
+python3 -m pip install opastro
+```
+
+## Install (Editable, Contributors)
 
 ```bash
 python3 -m venv .venv
