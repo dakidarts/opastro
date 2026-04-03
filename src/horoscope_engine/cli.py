@@ -340,7 +340,7 @@ def _add_common_report_args(parser: argparse.ArgumentParser, *, require_period: 
     parser.add_argument(
         "--zodiac-system",
         choices=["sidereal", "tropical"],
-        help="Zodiac system override.",
+        help="Zodiac system override (default: tropical).",
     )
     parser.add_argument(
         "--ayanamsa",

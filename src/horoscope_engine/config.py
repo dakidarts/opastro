@@ -32,7 +32,7 @@ class EphemerisConfig:
     ephemeris_path: Optional[str] = field(default_factory=_default_ephemeris_path)
     sidereal_mode: int = swe.SIDM_LAHIRI
     ayanamsa_system: str = "lahiri"
-    zodiac_system: str = "sidereal"
+    zodiac_system: str = "tropical"
     house_system: str = "P"
     node_type: str = "true"
     orb_major: float = 8.0

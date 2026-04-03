@@ -23,7 +23,7 @@ Base URL (local): `http://127.0.0.1:8000`
   "sign": "ARIES",
   "target_date": "2026-04-03",
   "sections": ["general", "career"],
-  "zodiac_system": "sidereal",
+  "zodiac_system": "tropical",
   "ayanamsa": "lahiri",
   "house_system": "placidus",
   "node_type": "true",
@@ -32,6 +32,7 @@ Base URL (local): `http://127.0.0.1:8000`
 ```
 
 Either `sign` or `birth` is required.
+Default zodiac mode is `tropical` when `zodiac_system` is omitted.
 
 ### Optional birth payload
 

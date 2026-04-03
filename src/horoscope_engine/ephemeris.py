@@ -84,7 +84,7 @@ class EphemerisEngine:
         return flags
 
     def _use_tropical(self) -> bool:
-        return (self.config.zodiac_system or "sidereal").lower() == "tropical"
+        return (self.config.zodiac_system or "tropical").lower() == "tropical"
 
     def _longitude_to_sign(self, longitude: float) -> Tuple[str, float]:
         normalized = longitude % 360.0

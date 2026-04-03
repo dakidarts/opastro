@@ -88,7 +88,7 @@ opastro
 - `--birth-time HH:MM`
 - `--lat <float> --lon <float>`
 - `--timezone <IANA timezone>`
-- `--zodiac-system {sidereal,tropical}`
+- `--zodiac-system {sidereal,tropical}` (default: `tropical`)
 - `--ayanamsa {lahiri,fagan_bradley,krishnamurti,raman,yukteswar}`
 - `--house-system {placidus,whole_sign,equal,koch}`
 - `--node-type {true,mean}`
