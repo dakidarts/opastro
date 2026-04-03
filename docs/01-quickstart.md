@@ -1,4 +1,4 @@
-# Quickstart
+# 5-Minute Quickstart
 
 ## Requirements
 

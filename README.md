@@ -19,6 +19,37 @@ Opastro is a deterministic horoscope engine built for two use cases:
 The open-core repo ships calculations + lightweight built-in meanings.
 Richer premium narrative packs are available via [numerologyapi.com](https://numerologyapi.com).
 
+**One-line promise:** Open-source astrology engine for developers: CLI, API, Swiss Ephemeris, and explainable horoscope generation.
+
+## 5-Minute Quickstart
+
+```bash
+python3 -m pip install -U opastro
+opastro doctor
+opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
+```
+
+## Terminal Demo
+
+```bash
+opastro horoscope --period daily --sign ARIES --target-date 2026-04-03 --format markdown
+```
+
+```md
+# OPASTRO REPORT
+- **Type:** `horoscope`  - **Sign:** `ARIES`  - **Period:** `daily`
+
+## General (...)
+...
+```
+
+## Open Core vs Premium
+
+| Product | Includes | Best For |
+|---|---|---|
+| `opastro` (this repo) | Open calculations, deterministic engine, lite meanings, installable CLI, local API | Developers building local tools, prototypes, integrations, and transparent workflows |
+| [numerologyapi.com](https://numerologyapi.com) | Premium narrative depth, richer editorial packs, production-grade premium reading flows | Apps and businesses needing deeper reading content and premium user-facing experiences |
+
 ## What Is Open Here
 
 - Swiss Ephemeris-based astrology calculations
@@ -222,9 +253,6 @@ python3 -m build
 
 # Validate package metadata/rendering
 python3 -m twine check dist/*
-
-# Optional safety pass: upload to TestPyPI first
-python3 -m twine upload --repository testpypi dist/*
 
 # Production upload
 python3 -m twine upload dist/*

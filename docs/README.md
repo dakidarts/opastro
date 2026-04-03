@@ -20,6 +20,16 @@ Install from PyPI:
 python3 -m pip install opastro
 ```
 
+## Start In 5 Minutes
+
+```bash
+python3 -m pip install -U opastro
+opastro doctor
+opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
+```
+
+Then continue with [01-quickstart.md](./01-quickstart.md) for the full command tour.
+
 ## Quick Navigation
 
 1. [01-quickstart.md](./01-quickstart.md)
