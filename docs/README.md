@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://numerologyapi.com">
-    <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1770073784/the_numerology_api_fzlsli.gif" alt="Opastro Banner" />
+    <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1758341353/cover_dne2nf.jpg" alt="OpAstro Banner" />
   </a>
 </p>
 

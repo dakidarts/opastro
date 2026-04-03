@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://numerologyapi.com">
-    <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1770073784/the_numerology_api_fzlsli.gif" alt="Opastro Banner" />
+    <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1758341353/cover_dne2nf.jpg" alt="OpAstro Banner" />
   </a>
 </p>
 
@@ -125,7 +125,7 @@ opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
 opastro horoscope \
   --period daily \
   --target-date 2026-04-03 \
-  --birth-date 1992-06-15 \
+  --birth-date 1997-08-17 \
   --birth-time 09:30 \
   --lat 4.0511 \
   --lon 9.7679 \
@@ -232,7 +232,7 @@ python3 -m twine upload dist/*
 
 ## Docs
 
-Start here: [docs/README.md](docs/README.md)
+Start here: [docs/README.md](https://github.com/dakidarts/opastro/blob/main/docs/README.md)
 
 ## Python Library Examples
 
@@ -276,7 +276,7 @@ response = service.generate(
         period=Period.WEEKLY,
         target_date=date(2026, 4, 3),
         birth=BirthData(
-            date=date(1992, 6, 15),
+            date=date(1997, 8, 17),
             time="09:30",
             coordinates=Coordinates(latitude=4.0511, longitude=9.7679),
             timezone="Africa/Douala",
