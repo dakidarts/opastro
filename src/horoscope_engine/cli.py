@@ -1067,7 +1067,8 @@ def _handle_doctor(args: argparse.Namespace) -> int:
     print(f"Ephemeris path : {cfg.ephemeris.ephemeris_path or 'auto/not-set'}")
     print(f"Zodiac system  : {cfg.ephemeris.zodiac_system}")
     print(f"Ayanamsa       : {cfg.ephemeris.ayanamsa_system}")
-    print(f"Virtual env    : {'yes' if sys.prefix != sys.base_prefix else 'no'}")
+    in_venv = sys.prefix != sys.base_prefix
+    print(f"Virtual env    : {'yes' if in_venv else 'no'}")
 
     required = f"{MIN_PYTHON_VERSION[0]}.{MIN_PYTHON_VERSION[1]}+"
     runtime_ok = sys.version_info >= MIN_PYTHON_VERSION
@@ -1086,12 +1087,18 @@ def _handle_doctor(args: argparse.Namespace) -> int:
         print(_style("Deps check     : OK", "1;32"))
 
     if args.fix:
+        if not in_venv and not args.dry_run:
+            print(_style("Fix blocked   : Refusing to install outside a virtual environment.", "1;33"))
+            print("Recommendation : Create a venv first, then run `opastro doctor --fix`.")
+            return 0
+
         _doctor_fix(args)
-        after_missing, _ = _dependency_health()
-        if not after_missing:
-            print(_style("Post-fix check : OK", "1;32"))
-        else:
-            print(_style(f"Post-fix check : WARN (still missing: {', '.join(after_missing)})", "1;33"))
+        if not args.dry_run:
+            after_missing, _ = _dependency_health()
+            if not after_missing:
+                print(_style("Post-fix check : OK", "1;32"))
+            else:
+                print(_style(f"Post-fix check : WARN (still missing: {', '.join(after_missing)})", "1;33"))
     elif missing_deps or not runtime_ok:
         print("Suggestion     : Run `opastro doctor --fix --dry-run` to preview automatic remediation.")
 
