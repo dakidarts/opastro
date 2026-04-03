@@ -65,6 +65,11 @@ COMMAND_ALIASES = {
 }
 
 
+class OpastroArgumentParser(argparse.ArgumentParser):
+    def format_help(self) -> str:
+        return _render_themed_help(self)
+
+
 def _parse_date(raw: str) -> date:
     return date.fromisoformat(raw)
 
@@ -100,7 +105,7 @@ def _build_birth(args: argparse.Namespace) -> Optional[BirthData]:
 
 
 def _build_base_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
+    parser = OpastroArgumentParser(
         prog="opastro",
         description="Opastro CLI: deterministic horoscope engine with premium-grade terminal UX.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -118,7 +123,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
             """
         ).strip(),
     )
-    subparsers = parser.add_subparsers(dest="command")
+    subparsers = parser.add_subparsers(dest="command", parser_class=OpastroArgumentParser)
 
     init = subparsers.add_parser(
         "init",
@@ -166,7 +171,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
         description="Manage reusable defaults for sign/birth/preferences.",
     )
     profile.set_defaults(handler=_handle_profile_list)
-    profile_sub = profile.add_subparsers(dest="profile_command")
+    profile_sub = profile.add_subparsers(dest="profile_command", parser_class=OpastroArgumentParser)
 
     profile_list = profile_sub.add_parser(
         "list",
@@ -448,6 +453,301 @@ def _wrap_bullet(line: str, indent: str = "    - ") -> str:
         initial_indent=indent,
         subsequent_indent=" " * len(indent),
     )
+
+
+def _table_chars() -> dict[str, str]:
+    encoding = (getattr(sys.stdout, "encoding", "") or "").lower()
+    if "utf" not in encoding:
+        return {
+            "h": "-",
+            "v": "|",
+            "tl": "+",
+            "tr": "+",
+            "bl": "+",
+            "br": "+",
+            "tm": "+",
+            "bm": "+",
+            "mm": "+",
+            "lm": "+",
+            "rm": "+",
+        }
+    return {
+        "h": "─",
+        "v": "│",
+        "tl": "┌",
+        "tr": "┐",
+        "bl": "└",
+        "br": "┘",
+        "tm": "┬",
+        "bm": "┴",
+        "mm": "┼",
+        "lm": "├",
+        "rm": "┤",
+    }
+
+
+def _cell_wrap(text: str, width: int) -> list[str]:
+    normalized = text.strip()
+    if not normalized:
+        return [""]
+    chunks: list[str] = []
+    for source_line in normalized.splitlines():
+        pieces = textwrap.wrap(
+            source_line,
+            width=max(8, width),
+            break_long_words=True,
+            replace_whitespace=False,
+        )
+        chunks.extend(pieces if pieces else [""])
+    return chunks or [""]
+
+
+def _render_line_table(
+    rows: list[tuple[str, str]],
+    *,
+    headers: tuple[str, str] = ("Item", "Description"),
+    left_max_width: int = 34,
+    left_min_width: int = 14,
+    cell_padding: int = 1,
+) -> str:
+    if not rows:
+        return ""
+
+    chars = _table_chars()
+    width = _term_width()
+    pad = max(0, cell_padding)
+    fixed_overhead = 3 + (pad * 4)
+    left_seed = [headers[0], *[left for left, _ in rows]]
+    left_width = min(max(left_min_width, max(len(value) for value in left_seed)), left_max_width)
+    right_width = width - left_width - fixed_overhead
+    if right_width < 24:
+        left_width = max(10, width - (24 + fixed_overhead))
+        right_width = max(16, width - left_width - fixed_overhead)
+
+    top = (
+        f"{chars['tl']}{chars['h'] * (left_width + pad * 2)}"
+        f"{chars['tm']}{chars['h'] * (right_width + pad * 2)}{chars['tr']}"
+    )
+    mid = (
+        f"{chars['lm']}{chars['h'] * (left_width + pad * 2)}"
+        f"{chars['mm']}{chars['h'] * (right_width + pad * 2)}{chars['rm']}"
+    )
+    bottom = (
+        f"{chars['bl']}{chars['h'] * (left_width + pad * 2)}"
+        f"{chars['bm']}{chars['h'] * (right_width + pad * 2)}{chars['br']}"
+    )
+
+    lines: list[str] = [_style(top, "2;34")]
+
+    def _emit_row(left: str, right: str, *, tone: Optional[str] = None) -> None:
+        left_lines = _cell_wrap(left, left_width)
+        right_lines = _cell_wrap(right, right_width)
+        row_height = max(len(left_lines), len(right_lines))
+        for idx in range(row_height):
+            left_part = left_lines[idx] if idx < len(left_lines) else ""
+            right_part = right_lines[idx] if idx < len(right_lines) else ""
+            row_line = (
+                f"{chars['v']}{' ' * pad}{left_part.ljust(left_width)}{' ' * pad}"
+                f"{chars['v']}{' ' * pad}{right_part.ljust(right_width)}{' ' * pad}{chars['v']}"
+            )
+            lines.append(_style(row_line, tone) if tone else row_line)
+
+    _emit_row(headers[0], headers[1], tone="1;36")
+    lines.append(_style(mid, "2;34"))
+    for left, right in rows:
+        _emit_row(left, right)
+    lines.append(_style(bottom, "2;34"))
+    return "\n".join(lines)
+
+
+def _formatter_action_strings(parser: argparse.ArgumentParser, action: argparse.Action) -> tuple[str, str]:
+    formatter = parser._get_formatter()
+    if action.option_strings:
+        option_tokens = sorted(
+            action.option_strings,
+            key=lambda token: (0 if token.startswith("--") else 1, len(token), token),
+        )
+        if action.nargs == 0:
+            invocation = ", ".join(option_tokens)
+        else:
+            metavar: str
+            if action.metavar is not None:
+                if isinstance(action.metavar, tuple):
+                    metavar = " ".join(str(item) for item in action.metavar)
+                else:
+                    metavar = str(action.metavar)
+            elif action.choices:
+                metavar = "VALUE"
+            else:
+                metavar = action.dest.upper()
+            primary = option_tokens[0]
+            invocation = f"{primary} {metavar}"
+    else:
+        invocation = action.metavar if isinstance(action.metavar, str) else action.dest
+        invocation = str(invocation)
+    invocation = " ".join(invocation.split())
+    if action.help in (None, argparse.SUPPRESS):
+        description = ""
+    else:
+        description = " ".join(formatter._expand_help(action).split())
+
+    if action.required and action.option_strings:
+        description = f"{description} (required)".strip()
+
+    if action.choices:
+        choices = [str(choice) for choice in action.choices]
+        if len(choices) > 5:
+            preview = ", ".join(choices[:4]) + f", +{len(choices) - 4} more"
+        else:
+            preview = ", ".join(choices)
+        choice_suffix = f"Choices: {preview}."
+        description = f"{description} {choice_suffix}".strip()
+    return invocation, description
+
+
+def _collect_subcommand_rows(parser: argparse.ArgumentParser) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    for action in parser._actions:
+        if not isinstance(action, argparse._SubParsersAction):
+            continue
+        for subaction in action._get_subactions():
+            label = subaction.dest
+            aliases = COMMAND_ALIASES.get(label)
+            if aliases:
+                label = f"{label} ({', '.join(aliases)})"
+            description = subaction.help or ""
+            rows.append((label, description))
+    return rows
+
+
+def _collect_option_rows(parser: argparse.ArgumentParser) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    for action in parser._actions:
+        if action.help == argparse.SUPPRESS:
+            continue
+        if isinstance(action, argparse._SubParsersAction):
+            continue
+        if action.option_strings:
+            rows.append(_formatter_action_strings(parser, action))
+    return rows
+
+
+def _collect_argument_rows(parser: argparse.ArgumentParser) -> list[tuple[str, str]]:
+    rows: list[tuple[str, str]] = []
+    for action in parser._actions:
+        if action.help == argparse.SUPPRESS:
+            continue
+        if isinstance(action, argparse._SubParsersAction):
+            continue
+        if not action.option_strings:
+            rows.append(_formatter_action_strings(parser, action))
+    return rows
+
+
+def _collect_example_rows(epilog: Optional[str]) -> list[tuple[str, str]]:
+    if not epilog:
+        return []
+    rows: list[tuple[str, str]] = []
+    for line in epilog.splitlines():
+        clean = line.strip()
+        if not clean:
+            continue
+        if clean.lower().startswith("examples:"):
+            continue
+        rows.append(("Run", clean))
+    return rows
+
+
+def _usage_value(parser: argparse.ArgumentParser) -> str:
+    usage = parser.format_usage().strip()
+    if usage.lower().startswith("usage:"):
+        return usage.split(":", 1)[1].strip()
+    return usage
+
+
+def _render_themed_help(parser: argparse.ArgumentParser) -> str:
+    lines: list[str] = []
+    table_width = _term_width()
+    compact = table_width <= 84
+    tight = table_width <= 74
+    lines.append(_style("OPASTRO HELP", "1;34"))
+    lines.append(_style(f"{parser.prog}", "1;36"))
+
+    if parser.description:
+        lines.append(_wrap(parser.description))
+
+    usage_rows = [("Syntax", _usage_value(parser))]
+    lines.append("")
+    lines.append(_style("Usage", "1;33"))
+    lines.append(
+        _render_line_table(
+            usage_rows,
+            headers=("Scope", "Command Pattern"),
+            left_max_width=15 if compact else 18,
+            left_min_width=10,
+            cell_padding=0 if tight else 1,
+        )
+    )
+
+    command_rows = _collect_subcommand_rows(parser)
+    if command_rows:
+        lines.append("")
+        lines.append(_style("Commands", "1;33"))
+        lines.append(
+            _render_line_table(
+                command_rows,
+                headers=("Command", "Purpose"),
+                left_max_width=18 if compact else 24,
+                left_min_width=11,
+                cell_padding=0 if tight else 1,
+            )
+        )
+
+    argument_rows = _collect_argument_rows(parser)
+    if argument_rows:
+        lines.append("")
+        lines.append(_style("Arguments", "1;33"))
+        lines.append(
+            _render_line_table(
+                argument_rows,
+                headers=("Argument", "Description"),
+                left_max_width=20 if compact else 28,
+                left_min_width=10,
+                cell_padding=0 if compact else 1,
+            )
+        )
+
+    option_rows = _collect_option_rows(parser)
+    if option_rows:
+        lines.append("")
+        lines.append(_style("Options", "1;33"))
+        lines.append(
+            _render_line_table(
+                option_rows,
+                headers=("Option", "Description"),
+                left_max_width=30 if tight else (34 if compact else 40),
+                left_min_width=12,
+                cell_padding=0 if compact else 1,
+            )
+        )
+
+    example_rows = _collect_example_rows(parser.epilog)
+    if example_rows:
+        lines.append("")
+        lines.append(_style("Examples", "1;33"))
+        lines.append(
+            _render_line_table(
+                example_rows,
+                headers=("Try", "Command"),
+                left_max_width=10 if compact else 14,
+                left_min_width=5,
+                cell_padding=0 if tight else 1,
+            )
+        )
+
+    lines.append("")
+    lines.append(_style(UPSELL_TEXT, "1;35"))
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _print_heading(label: str) -> None:
@@ -1652,7 +1952,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(_suggest_command(first), file=sys.stderr)
         return 2
 
-    args = parser.parse_args(raw_argv)
+    try:
+        args = parser.parse_args(raw_argv)
+    except SystemExit as exc:
+        return int(exc.code)
     try:
         if hasattr(args, "handler"):
             return args.handler(args)
