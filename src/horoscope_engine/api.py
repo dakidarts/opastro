@@ -1,0 +1,206 @@
+from __future__ import annotations
+
+import logging
+import os
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException, Header
+
+from .cache import cache_from_env
+from .cache_keys import build_cache_key
+from .config import ServiceConfig
+from .healthcheck import run_content_coverage_healthcheck
+from .models import BirthdayHoroscopeRequest, HoroscopeRequest, HoroscopeResponse, Period, PlanetHoroscopeRequest, PregenRequest
+from .observability import MetricsCollector, Timer
+from .pregen import pregenerate
+from .service import HoroscopeService
+
+
+app = FastAPI(title="NumerologyAPI Horoscope Engine", version="0.1.0")
+logger = logging.getLogger(__name__)
+
+service_config = ServiceConfig()
+service = HoroscopeService(service_config)
+cache = cache_from_env(service_config.cache_ttl_seconds)
+metrics = MetricsCollector()
+
+
+@app.on_event("startup")
+async def startup_content_healthcheck() -> None:
+    if os.getenv("CONTENT_HEALTHCHECK_DISABLE", "0") == "1":
+        return
+    if service.content_repository is None:
+        logger.info("content-healthcheck: skipped (no content root configured)")
+        return
+    repo_root = Path(__file__).resolve().parents[2]
+    issues = run_content_coverage_healthcheck(
+        content_root=service.content_repository.root,
+        schema_root=repo_root / "kaggle",
+    )
+    for issue in issues:
+        logger.warning("content-healthcheck: %s", issue)
+    if issues and os.getenv("CONTENT_HEALTHCHECK_FAIL_FAST", "0") == "1":
+        raise RuntimeError("Content healthcheck failed")
+
+
+@app.get("/health")
+async def health() -> dict:
+    return {"status": "ok"}
+
+
+@app.post("/horoscope", response_model=HoroscopeResponse)
+async def get_horoscope(
+    request: HoroscopeRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> HoroscopeResponse:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    birth = request.birth
+    cache_key = build_cache_key(
+        tenant_id=tenant,
+        period=request.period,
+        sign=request.sign,
+        sign_source="provided" if request.sign else "derived",
+        sections=[section.value for section in request.sections] if request.sections else None,
+        target_date=request.target_date,
+        birth_date=birth.date.isoformat() if birth else None,
+        birth_time=birth.time if birth else None,
+        birth_latitude=birth.coordinates.latitude if birth and birth.coordinates else None,
+        birth_longitude=birth.coordinates.longitude if birth and birth.coordinates else None,
+        birth_timezone=birth.timezone if birth else None,
+        zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
+        ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
+        house_system=request.house_system.value if request.house_system else None,
+        node_type=request.node_type.value if request.node_type else None,
+    )
+    cached = cache.get(cache_key)
+    if cached:
+        metrics.record_cache_hit()
+        metrics.record_request(timer.elapsed_ms())
+        return HoroscopeResponse.model_validate_json(cached)
+
+    try:
+        response = service.generate(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    cache.set(cache_key, response.model_dump_json())
+    metrics.record_cache_miss()
+    metrics.record_request(timer.elapsed_ms())
+    return response
+
+
+@app.post("/birthday-horoscope", response_model=HoroscopeResponse)
+async def get_birthday_horoscope(
+    request: BirthdayHoroscopeRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> HoroscopeResponse:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    birth = request.birth
+    cache_key = build_cache_key(
+        tenant_id=tenant,
+        period=Period.YEARLY,
+        sign=request.sign,
+        sign_source="provided" if request.sign else "derived",
+        sections=[section.value for section in request.sections] if request.sections else None,
+        target_date=request.target_date,
+        birth_date=birth.date.isoformat() if birth else None,
+        birth_time=birth.time if birth else None,
+        birth_latitude=birth.coordinates.latitude if birth and birth.coordinates else None,
+        birth_longitude=birth.coordinates.longitude if birth and birth.coordinates else None,
+        birth_timezone=birth.timezone if birth else None,
+        zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
+        ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
+        house_system=request.house_system.value if request.house_system else None,
+        node_type=request.node_type.value if request.node_type else None,
+        key_namespace="birthday_horoscope",
+    )
+    cached = cache.get(cache_key)
+    if cached:
+        metrics.record_cache_hit()
+        metrics.record_request(timer.elapsed_ms())
+        return HoroscopeResponse.model_validate_json(cached)
+
+    try:
+        response = service.generate_birthday(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    cache.set(cache_key, response.model_dump_json())
+    metrics.record_cache_miss()
+    metrics.record_request(timer.elapsed_ms())
+    return response
+
+
+@app.post("/planet-horoscope", response_model=HoroscopeResponse)
+async def get_planet_horoscope(
+    request: PlanetHoroscopeRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> HoroscopeResponse:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    birth = request.birth
+    cache_key = build_cache_key(
+        tenant_id=tenant,
+        period=request.period,
+        sign=request.sign,
+        sign_source="provided" if request.sign else "derived",
+        sections=[section.value for section in request.sections] if request.sections else None,
+        target_date=request.target_date,
+        birth_date=birth.date.isoformat() if birth else None,
+        birth_time=birth.time if birth else None,
+        birth_latitude=birth.coordinates.latitude if birth and birth.coordinates else None,
+        birth_longitude=birth.coordinates.longitude if birth and birth.coordinates else None,
+        birth_timezone=birth.timezone if birth else None,
+        zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
+        ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
+        house_system=request.house_system.value if request.house_system else None,
+        node_type=request.node_type.value if request.node_type else None,
+        key_namespace=f"planet_horoscope:{request.planet.value}",
+    )
+    cached = cache.get(cache_key)
+    if cached:
+        metrics.record_cache_hit()
+        metrics.record_request(timer.elapsed_ms())
+        return HoroscopeResponse.model_validate_json(cached)
+
+    try:
+        response = service.generate_planet(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    cache.set(cache_key, response.model_dump_json())
+    metrics.record_cache_miss()
+    metrics.record_request(timer.elapsed_ms())
+    return response
+
+
+@app.get("/metrics")
+async def get_metrics() -> dict:
+    snap = metrics.snapshot()
+    return {
+        "requests": snap.requests,
+        "cache_hits": snap.cache_hits,
+        "cache_misses": snap.cache_misses,
+        "avg_latency_ms": snap.avg_latency_ms,
+    }
+
+
+@app.post("/admin/pregenerate")
+async def admin_pregenerate(
+    payload: PregenRequest,
+    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+) -> dict:
+    expected = os.getenv("PREGEN_TOKEN")
+    if expected and x_admin_token != expected:
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+
+    total = pregenerate(
+        service,
+        cache,
+        payload.period,
+        payload.target_date,
+        tenant_id=payload.tenant_id,
+    )
+    return {"status": "ok", "generated": total}

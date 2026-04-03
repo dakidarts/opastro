@@ -1,0 +1,58 @@
+{
+  "sign_tone": {
+    "ARIES": "bold and direct",
+    "TAURUS": "steady and grounded",
+    "GEMINI": "curious and agile",
+    "CANCER": "protective and intuitive",
+    "LEO": "expressive and confident",
+    "VIRGO": "precise and practical",
+    "LIBRA": "harmonizing and fair",
+    "SCORPIO": "focused and transformative",
+    "SAGITTARIUS": "expansive and optimistic",
+    "CAPRICORN": "disciplined and strategic",
+    "AQUARIUS": "innovative and independent",
+    "PISCES": "empathetic and imaginative"
+  },
+  "section_weights": {
+    "general": {"Sun": 1.0, "Moon": 0.9, "Jupiter": 0.7},
+    "love": {"Venus": 1.0, "Moon": 0.7, "Mars": 0.6, "Juno": 0.5},
+    "career": {"Saturn": 1.0, "Mars": 0.7, "Mercury": 0.6, "Pallas": 0.4},
+    "friendship": {"Mercury": 0.8, "Venus": 0.6, "Moon": 0.5},
+    "health": {"Sun": 0.8, "Mars": 0.7, "Saturn": 0.6, "Chiron": 0.6, "Ceres": 0.5},
+    "money": {"Jupiter": 0.9, "Venus": 0.7, "Saturn": 0.6},
+    "communication": {"Mercury": 1.0, "Moon": 0.5, "Uranus": 0.4},
+    "lifestyle": {"Venus": 0.7, "Sun": 0.6, "Neptune": 0.4, "Vesta": 0.4, "Ceres": 0.4}
+  },
+  "planet_keywords": {
+    "Sun": ["identity", "vitality"],
+    "Moon": ["emotions", "habits"],
+    "Mercury": ["communication", "analysis"],
+    "Venus": ["affection", "values"],
+    "Mars": ["drive", "action"],
+    "Jupiter": ["growth", "opportunity"],
+    "Saturn": ["structure", "discipline"],
+    "Uranus": ["change", "insight"],
+    "Neptune": ["dreams", "intuition"],
+    "Pluto": ["transformation", "power"],
+    "Chiron": ["healing", "lessons"],
+    "Ceres": ["nurturing", "support"],
+    "North Node": ["destiny", "direction"],
+    "South Node": ["release", "past"],
+    "Lilith": ["independence", "truth"],
+    "Pallas": ["strategy", "wisdom"],
+    "Juno": ["commitment", "partnership"],
+    "Vesta": ["focus", "dedication"],
+    "Eris": ["disruption", "clarity"]
+  },
+  "aspect_keywords": {
+    "conjunction": "intensifies",
+    "opposition": "balances",
+    "trine": "supports",
+    "square": "pressures",
+    "sextile": "opens",
+    "quincunx": "adjusts",
+    "semi-sextile": "subtly links",
+    "semi-square": "irritates",
+    "sesquiquadrate": "tests"
+  }
+}
