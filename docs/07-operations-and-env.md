@@ -33,6 +33,9 @@
 # CLI doctor
 opastro doctor
 
+# Runtime logger
+opastro logger show --limit 10
+
 # Run API
 opastro serve --host 127.0.0.1 --port 8000 --reload
 

@@ -101,6 +101,7 @@ opastro
 | `opastro welcome` | Show welcome UI explicitly |
 | `opastro catalog` | List periods, sections, signs, and planets |
 | `opastro doctor` | Runtime diagnostics (python path, platform, ephemeris mode) |
+| `opastro logger` | Runtime error log inspector (`show`, `tail`, `path`, `clear`) |
 | `opastro horoscope` | Generate standard reports (daily/weekly/monthly/yearly) |
 | `opastro birthday` | Generate birthday-cycle yearly report |
 | `opastro planet` | Generate planet-focused report |
@@ -156,6 +157,11 @@ opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-
 opastro ui --period daily --sign ARIES --target-date 2026-04-03
 # keys: ↑↓/j,k section • enter factor mode • pgup/pgdn scroll • g/G jump • q quit
 
+# Runtime error logs with suggested fixes
+opastro logger show --limit 5
+opastro logger tail
+opastro logger path
+
 # Batch generation
 opastro batch --kind horoscope --period daily --signs ARIES,TAURUS --date-from 2026-04-03 --date-to 2026-04-05 --format markdown --export-dir reports/batch
 
@@ -181,7 +187,7 @@ opastro planet --period monthly --planet mercury --sign TAURUS --target-date 202
 # Natal report + premium artifact exports
 opastro natal \
   --user-name "Dakidarts" \
-  --birth-date 2004-06-14 \
+  --birth-date 1997-08-14 \
   --birth-time 09:30 \
   --lat 4.0511 \
   --lon 9.7679 \
@@ -245,7 +251,7 @@ curl -X POST http://127.0.0.1:8000/horoscope \
 ```bash
 curl -X POST http://127.0.0.1:8000/natal-birthchart \
   -H "Content-Type: application/json" \
-  -d '{"birth":{"date":"2004-06-14","time":"09:30","coordinates":{"latitude":4.0511,"longitude":9.7679},"timezone":"Africa/Douala"}}'
+  -d '{"birth":{"date":"1997-08-14","time":"09:30","coordinates":{"latitude":4.0511,"longitude":9.7679},"timezone":"Africa/Douala"}}'
 ```
 
 ## Environment Variables
@@ -267,6 +273,10 @@ opastro doctor --fix --dry-run
 
 # Apply auto-fixes (installs editable package + deps)
 opastro doctor --fix
+
+# Runtime error logs (captured from uncaught CLI errors)
+opastro logger show --limit 20
+opastro logger clear
 
 # Generate shell completions
 opastro completion --shell bash

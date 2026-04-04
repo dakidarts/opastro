@@ -7,6 +7,7 @@
 3. Re-run the same request with `--json` (CLI) or save exact API payload.
 4. Check `/health` and `/metrics` when debugging API behavior.
 5. Run tests: `PYTHONPATH=src python3 -m pytest -q`.
+6. Inspect structured runtime errors: `opastro logger show --limit 10`.
 
 ## CLI Issues
 
@@ -60,6 +61,20 @@ Auto-remediation:
 ```bash
 opastro doctor --fix --dry-run
 opastro doctor --fix
+```
+
+### Inspecting uncaught CLI runtime errors
+
+Behavior:
+- Uncaught CLI exceptions are written to a local runtime error log with timestamp, command context, traceback, and suggested fixes.
+
+Commands:
+
+```bash
+opastro logger show --limit 20
+opastro logger tail
+opastro logger path
+opastro logger clear
 ```
 
 ### `ModuleNotFoundError: No module named 'horoscope_engine'`

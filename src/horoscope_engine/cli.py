@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import traceback
 from typing import Any, Optional
 
 import uvicorn
@@ -66,6 +67,7 @@ COMMAND_ALIASES = {
     "welcome": ["home"],
     "catalog": ["ls"],
     "doctor": ["diag"],
+    "logger": ["log"],
     "profile": ["profiles"],
     "horoscope": ["h"],
     "birthday": ["bday", "b"],
@@ -87,6 +89,7 @@ COLOR_ACCENT_BOLD = f"1;{COLOR_ACCENT}"
 COLOR_ACCENT_DIM = f"38;2;{ACCENT_FADE_RGB[0]};{ACCENT_FADE_RGB[1]};{ACCENT_FADE_RGB[2]}"
 COLOR_ACCENT_SOFT = f"38;2;{ACCENT_SOFT_RGB[0]};{ACCENT_SOFT_RGB[1]};{ACCENT_SOFT_RGB[2]}"
 COLOR_ACCENT_DEEP = f"38;2;{ACCENT_DEEP_RGB[0]};{ACCENT_DEEP_RGB[1]};{ACCENT_DEEP_RGB[2]}"
+RUNTIME_LOG_FILENAME = "runtime-errors.log"
 
 
 class OpastroArgumentParser(argparse.ArgumentParser):
@@ -146,8 +149,9 @@ def _build_base_parser() -> argparse.ArgumentParser:
               opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
               opastro horoscope --period weekly --birth-date 1992-06-15 --birth-time 09:30 --lat 4.0511 --lon 9.7679 --timezone Africa/Douala
               opastro horoscope --period daily --sign ARIES --format markdown --export reports/aries.md
+              opastro logger show --limit 5
               opastro planet --period monthly --planet mercury --sign TAURUS
-              opastro natal --birth-date 2004-06-14 --birth-time 09:30 --lat 4.0511 --lon 9.7679 --pdf reports/natal.pdf
+              opastro natal --birth-date 1997-08-14 --birth-time 09:30 --lat 4.0511 --lon 9.7679 --pdf reports/natal.pdf
               opastro serve --host 127.0.0.1 --port 8000 --reload
             """
         ).strip(),
@@ -199,6 +203,49 @@ def _build_base_parser() -> argparse.ArgumentParser:
     doctor.add_argument("--fix", action="store_true", help="Attempt automatic fixes for detected dependency/runtime gaps.")
     doctor.add_argument("--dry-run", action="store_true", help="Show fix commands without executing them.")
     doctor.set_defaults(handler=_handle_doctor)
+
+    logger = subparsers.add_parser(
+        "logger",
+        aliases=COMMAND_ALIASES["logger"],
+        help="Inspect and manage runtime error logs with suggested fixes.",
+        description="Show, tail, clear, or locate structured CLI runtime error logs.",
+    )
+    logger.set_defaults(handler=_handle_logger_show, logger_command="show")
+    logger_sub = logger.add_subparsers(dest="logger_command", parser_class=OpastroArgumentParser)
+
+    logger_show = logger_sub.add_parser(
+        "show",
+        help="Show recent runtime error entries (default action).",
+        description="Display structured runtime errors with command context and suggested fixes.",
+    )
+    logger_show.add_argument("-n", "--limit", type=int, default=20, help="Number of most recent entries to show.")
+    logger_show.add_argument("--json", action="store_true", help="Render log entries as JSON.")
+    logger_show.add_argument("--verbose", action="store_true", help="Include traceback snippets in text mode.")
+    logger_show.set_defaults(handler=_handle_logger_show)
+
+    logger_tail = logger_sub.add_parser(
+        "tail",
+        help="Show a compact recent slice of runtime errors.",
+        description="Alias-style compact view for the most recent runtime failures.",
+    )
+    logger_tail.add_argument("-n", "--limit", type=int, default=8, help="Number of most recent entries to show.")
+    logger_tail.add_argument("--json", action="store_true", help="Render log entries as JSON.")
+    logger_tail.add_argument("--verbose", action="store_true", help="Include traceback snippets in text mode.")
+    logger_tail.set_defaults(handler=_handle_logger_show)
+
+    logger_path = logger_sub.add_parser(
+        "path",
+        help="Print runtime log file path.",
+        description="Print absolute path to the current runtime error log file.",
+    )
+    logger_path.set_defaults(handler=_handle_logger_path)
+
+    logger_clear = logger_sub.add_parser(
+        "clear",
+        help="Clear runtime error log entries.",
+        description="Remove all stored runtime error entries from the local log.",
+    )
+    logger_clear.set_defaults(handler=_handle_logger_clear)
 
     profile = subparsers.add_parser(
         "profile",
@@ -1555,6 +1602,7 @@ def _show_welcome() -> int:
         ("profile", "Save/list/show/use reusable profile defaults."),
         ("catalog", "List all supported periods, sections, signs, and planets."),
         ("doctor", "Inspect Python runtime, executable path, and readiness status."),
+        ("logger", "Inspect runtime error logs and recommended fixes."),
         ("horoscope", "Generate a standard period report from sign or birth data."),
         ("birthday", "Generate a yearly birthday-cycle report."),
         ("planet", "Generate a planet-focused report for deeper diagnostics."),
@@ -1677,6 +1725,204 @@ def _handle_doctor(args: argparse.Namespace) -> int:
     elif missing_deps or not runtime_ok:
         print("Suggestion     : Run `opastro doctor --fix --dry-run` to preview automatic remediation.")
 
+    return 0
+
+
+def _runtime_log_path() -> Path:
+    override = os.getenv("OPASTRO_CONFIG_DIR")
+    if override:
+        base = Path(override).expanduser()
+    else:
+        base = Path.home() / ".config" / "opastro"
+    return base / RUNTIME_LOG_FILENAME
+
+
+def _dedupe_lines(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        clean = " ".join(value.strip().split())
+        if not clean:
+            continue
+        token = clean.lower()
+        if token in seen:
+            continue
+        seen.add(token)
+        output.append(clean)
+    return output
+
+
+def _suggest_runtime_fixes(exc: Exception) -> list[str]:
+    message = str(exc)
+    lowered = message.lower()
+    fixes: list[str] = []
+
+    if "provide --birth-date" in lowered:
+        fixes.append("Add `--birth-date YYYY-MM-DD` whenever using `--birth-time`, `--lat/--lon`, or `--timezone`.")
+    if "both --lat and --lon together" in lowered:
+        fixes.append("Pass both `--lat` and `--lon` together for personalized house calculations.")
+    if "unsupported zodiac sign" in lowered:
+        fixes.append(f"Use a valid uppercase sign: {', '.join(ZODIAC_SIGNS)}.")
+    if "profile not found" in lowered:
+        fixes.append("Run `opastro profile list` to inspect profiles, or `opastro init` to create one.")
+    if "unsupported format" in lowered:
+        fixes.append("Use one of `--format text|json|markdown|html`.")
+    if "unsupported value for" in lowered:
+        fixes.append("Run the command with `--help` to view valid choices for that flag.")
+    if "--planet is required" in lowered:
+        fixes.append("Add `--planet` when running `planet` or planet-focused batch/explain flows.")
+    if "invalid isoformat string" in lowered or "invalid isoformat" in lowered:
+        fixes.append("Use ISO date format `YYYY-MM-DD` and time format `HH:MM`.")
+    if "timezone" in lowered and ("invalid" in lowered or "not found" in lowered):
+        fixes.append("Use a valid IANA timezone like `Africa/Douala` or `UTC`.")
+    if "no module named" in lowered:
+        fixes.append("Run `opastro doctor`, then `opastro doctor --fix` inside a Python 3.11+ virtual environment.")
+    if "permission denied" in lowered or "read-only file system" in lowered:
+        fixes.append("Choose a writable output location and verify file permissions.")
+    if "no such file or directory" in lowered:
+        fixes.append("Verify all input/output paths and create parent directories before exporting.")
+
+    if not fixes:
+        fixes.extend(
+            [
+                "Run `opastro doctor` to validate runtime and dependency readiness.",
+                "Check command syntax with `opastro <command> --help`.",
+            ]
+        )
+    fixes.append("Inspect structured error history with `opastro logger show`.")
+    return _dedupe_lines(fixes)
+
+
+def _serialize_runtime_error(argv: list[str], exc: Exception) -> dict[str, Any]:
+    tb_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).strip()
+    return {
+        "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "opastro_version": _app_version(),
+        "python_version": platform.python_version(),
+        "python_executable": sys.executable,
+        "cwd": str(Path.cwd()),
+        "command": argv,
+        "error_type": type(exc).__name__,
+        "error_message": str(exc),
+        "suggested_fixes": _suggest_runtime_fixes(exc),
+        "traceback": tb_text[-8000:] if tb_text else "",
+    }
+
+
+def _append_runtime_error_log(entry: dict[str, Any]) -> Optional[Path]:
+    try:
+        path = _runtime_log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=True, sort_keys=True))
+            handle.write("\n")
+        return path
+    except Exception:
+        return None
+
+
+def _read_runtime_error_log(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    entries: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8") as handle:
+        for line_no, line in enumerate(handle, start=1):
+            clean = line.strip()
+            if not clean:
+                continue
+            try:
+                payload = json.loads(clean)
+                if isinstance(payload, dict):
+                    entries.append(payload)
+                else:
+                    raise ValueError("Runtime entry is not an object.")
+            except Exception:
+                entries.append(
+                    {
+                        "timestamp": "unknown",
+                        "error_type": "LogParseError",
+                        "error_message": f"Could not parse log entry line {line_no}.",
+                        "command": [],
+                        "suggested_fixes": [
+                            "Run `opastro logger clear` to reset a corrupted log file.",
+                        ],
+                        "traceback": "",
+                    }
+                )
+    return entries
+
+
+def _render_logger_rows(entries: list[dict[str, Any]], *, verbose: bool) -> None:
+    for index, entry in enumerate(entries, start=1):
+        stamp = str(entry.get("timestamp", "unknown"))
+        error_type = str(entry.get("error_type", "Error"))
+        message = str(entry.get("error_message", "unknown runtime failure"))
+        command_tokens = entry.get("command")
+        command = " ".join(command_tokens) if isinstance(command_tokens, list) else ""
+        command_line = f"opastro {command}".strip()
+        fixes = entry.get("suggested_fixes")
+        if not isinstance(fixes, list):
+            fixes = []
+
+        print(_style(f"Entry {index} • {stamp}", COLOR_ACCENT_BOLD))
+        print(_wrap(f"  Command : {command_line}"))
+        print(_wrap(f"  Error   : {error_type}: {message}"))
+        if fixes:
+            print(_style("  Suggested fixes", COLOR_ACCENT_SOFT))
+            for fix in fixes:
+                print(_wrap_bullet(str(fix), indent="    - "))
+        if verbose:
+            traceback_text = str(entry.get("traceback", "")).strip()
+            if traceback_text:
+                print(_style("  Traceback", COLOR_ACCENT_SOFT))
+                for line in traceback_text.splitlines()[-10:]:
+                    print(_wrap(f"    {line}"))
+        if index != len(entries):
+            _print_divider("·")
+
+
+def _handle_logger_show(args: argparse.Namespace) -> int:
+    path = _runtime_log_path()
+    raw_limit = getattr(args, "limit", 20)
+    try:
+        limit = max(1, int(raw_limit))
+    except (TypeError, ValueError):
+        limit = 20
+    verbose = bool(getattr(args, "verbose", False))
+    output_json = bool(getattr(args, "json", False))
+
+    all_entries = _read_runtime_error_log(path)
+    recent = all_entries[-limit:]
+
+    if output_json:
+        print(json.dumps(recent, indent=2, sort_keys=True))
+        return 0
+
+    _print_heading("OPASTRO LOGGER")
+    _print_divider()
+    print(_wrap(f"Log file      : {path}"))
+    print(_wrap(f"Entries shown : {len(recent)} of {len(all_entries)} (limit={limit})"))
+    _print_divider()
+    if not recent:
+        print(_wrap("No runtime errors logged yet. New uncaught CLI exceptions will be recorded automatically."))
+        return 0
+
+    _render_logger_rows(recent, verbose=verbose)
+    return 0
+
+
+def _handle_logger_path(_: argparse.Namespace) -> int:
+    print(_runtime_log_path())
+    return 0
+
+
+def _handle_logger_clear(_: argparse.Namespace) -> int:
+    path = _runtime_log_path()
+    if path.exists():
+        path.unlink()
+        print(_style(f"Cleared runtime error log: {path}", "1;32"))
+    else:
+        print(_wrap(f"No runtime error log found at: {path}"))
     return 0
 
 
@@ -2394,7 +2640,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         parser.error(f"Unsupported command: {args.command}")
         return 2
     except Exception as exc:
+        entry = _serialize_runtime_error(raw_argv, exc)
+        log_path = _append_runtime_error_log(entry)
         print(f"error: {exc}", file=sys.stderr)
+        for fix in entry["suggested_fixes"][:3]:
+            print(f"suggestion: {fix}", file=sys.stderr)
+        if log_path is not None:
+            print(f"runtime log: {log_path}", file=sys.stderr)
+        print("inspect logs: opastro logger show --limit 5", file=sys.stderr)
         return 2
 
 

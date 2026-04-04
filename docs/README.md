@@ -49,6 +49,7 @@ python3 -m pip install opastro
 ```bash
 python3 -m pip install -U opastro
 opastro doctor
+opastro logger show --limit 5
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
 ```
 

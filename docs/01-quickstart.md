@@ -126,7 +126,7 @@ opastro batch --kind horoscope --period daily --signs ARIES,TAURUS --date-from 2
 ```bash
 opastro natal \
   --user-name "Dakidarts" \
-  --birth-date 2004-06-14 \
+  --birth-date 1997-08-14 \
   --birth-time 09:30 \
   --lat 4.0511 \
   --lon 9.7679 \
@@ -155,6 +155,7 @@ curl -X POST http://127.0.0.1:8000/horoscope \
 
 ```bash
 opastro doctor
+opastro logger show --limit 5
 ```
 
 ## Important Open-Core Note
