@@ -151,6 +151,7 @@ opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-
 
 # Interactive TUI
 opastro ui --period daily --sign ARIES --target-date 2026-04-03
+# keys: ↑↓/j,k section • enter factor mode • pgup/pgdn scroll • g/G jump • q quit
 
 # Batch generation
 opastro batch --kind horoscope --period daily --signs ARIES,TAURUS --date-from 2026-04-03 --date-to 2026-04-05 --format markdown --export-dir reports/batch

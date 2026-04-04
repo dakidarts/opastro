@@ -12,6 +12,7 @@ import json
 import os
 import platform
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -504,7 +505,7 @@ def _normalize_sign(value: Optional[str]) -> Optional[str]:
 def _style(text: str, code: str, *, colorize: bool = True) -> str:
     if not colorize or not _should_colorize():
         return text
-    return f"\033[{code}m{text}\033[0m"
+    return f"\033[{_adapt_color_code(code)}m{text}\033[0m"
 
 
 def _should_colorize() -> bool:
@@ -522,6 +523,60 @@ def _should_colorize() -> bool:
     if term == "dumb":
         return False
     return sys.stdout.isatty()
+
+
+def _supports_truecolor() -> bool:
+    if (os.getenv("OPASTRO_TRUECOLOR") or "").strip().lower() in {"1", "true", "on", "yes"}:
+        return True
+    if (os.getenv("OPASTRO_TRUECOLOR") or "").strip().lower() in {"0", "false", "off", "no"}:
+        return False
+    if (os.getenv("TERM_PROGRAM") or "").strip() == "Apple_Terminal":
+        # Apple Terminal can render truecolor inconsistently depending on profile/theme.
+        return False
+    colorterm = (os.getenv("COLORTERM") or "").strip().lower()
+    if "truecolor" in colorterm or "24bit" in colorterm:
+        return True
+    term = (os.getenv("TERM") or "").strip().lower()
+    return "direct" in term
+
+
+def _supports_256color() -> bool:
+    term = (os.getenv("TERM") or "").strip().lower()
+    return "256color" in term
+
+
+def _rgb_to_ansi256(r: int, g: int, b: int) -> int:
+    r = max(0, min(255, int(r)))
+    g = max(0, min(255, int(g)))
+    b = max(0, min(255, int(b)))
+    if r == g == b:
+        if r < 8:
+            return 16
+        if r > 248:
+            return 231
+        return 232 + int(round(((r - 8) / 247) * 24))
+    r6 = int(round((r / 255) * 5))
+    g6 = int(round((g / 255) * 5))
+    b6 = int(round((b / 255) * 5))
+    return 16 + (36 * r6) + (6 * g6) + b6
+
+
+_TRUECOLOR_PATTERN = re.compile(r"(38|48);2;(\d{1,3});(\d{1,3});(\d{1,3})")
+
+
+def _adapt_color_code(code: str) -> str:
+    if _supports_truecolor():
+        return code
+
+    def _replace(match: re.Match[str]) -> str:
+        channel = match.group(1)
+        r, g, b = int(match.group(2)), int(match.group(3)), int(match.group(4))
+        if _supports_256color():
+            return f"{channel};5;{_rgb_to_ansi256(r, g, b)}"
+        # 8-color fallback: force green family for brand consistency.
+        return "32" if channel == "38" else "42"
+
+    return _TRUECOLOR_PATTERN.sub(_replace, code)
 
 
 def _style_rgb(text: str, rgb: tuple[int, int, int], *, bold: bool = False) -> str:
@@ -1952,61 +2007,139 @@ def _run_ui(payload) -> int:
         return 0
 
     def _ui(stdscr) -> None:
+        def _safe_add(y: int, x: int, text: str, max_len: int, attr: int = 0) -> None:
+            if max_len <= 0:
+                return
+            try:
+                stdscr.addnstr(y, x, text, max_len, attr)
+            except curses.error:
+                pass
+
+        def _init_theme() -> dict[str, int]:
+            theme = {
+                "header": curses.A_BOLD,
+                "accent": curses.A_BOLD,
+                "selected": curses.A_REVERSE | curses.A_BOLD,
+                "muted": curses.A_DIM,
+                "body": curses.A_NORMAL,
+            }
+            if not curses.has_colors():
+                return theme
+            try:
+                curses.start_color()
+                curses.use_default_colors()
+                curses.init_pair(1, curses.COLOR_GREEN, -1)   # accent
+                curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_GREEN)  # selected row
+                curses.init_pair(3, curses.COLOR_WHITE, -1)   # body
+                curses.init_pair(4, curses.COLOR_CYAN, -1)    # meta
+                theme["header"] = curses.color_pair(1) | curses.A_BOLD
+                theme["accent"] = curses.color_pair(1) | curses.A_BOLD
+                theme["selected"] = curses.color_pair(2) | curses.A_BOLD
+                theme["muted"] = curses.color_pair(4)
+                theme["body"] = curses.color_pair(3)
+            except curses.error:
+                return theme
+            return theme
+
         curses.curs_set(0)
+        stdscr.keypad(True)
+        theme = _init_theme()
         selected = 0
         show_factors = False
+        scroll_offset = 0
 
         while True:
             stdscr.erase()
             height, width = stdscr.getmaxyx()
-            left_w = max(22, min(36, width // 3))
+            left_w = max(24, min(38, width // 3))
             right_x = left_w + 2
             right_w = max(20, width - right_x - 1)
+            page_h = max(6, height - 5)
 
-            header = f"OPASTRO UI | {payload.sign} | {payload.period.value} | q:quit ↑↓:navigate enter:toggle factors"
-            stdscr.addnstr(0, 0, header, width - 1, curses.A_BOLD)
-            stdscr.hline(1, 0, ord("-"), width - 1)
+            header = (
+                f"OPASTRO UI • {payload.sign} • {payload.period.value} • "
+                f"sections:{len(sections)} • factors:{'on' if show_factors else 'off'}"
+            )
+            _safe_add(0, 0, header, width - 1, theme["header"])
+            try:
+                stdscr.hline(1, 0, ord("─"), width - 1)
+            except curses.error:
+                stdscr.hline(1, 0, ord("-"), width - 1)
 
-            for idx, section in enumerate(sections):
+            left_view_h = max(1, height - 4)
+            left_start = max(0, selected - (left_view_h // 2))
+            left_end = min(len(sections), left_start + left_view_h)
+            if left_end - left_start < left_view_h:
+                left_start = max(0, left_end - left_view_h)
+
+            for row_idx, idx in enumerate(range(left_start, left_end)):
+                section = sections[idx]
                 label = f"{section.section.value.replace('_', ' ').title()} ({section.intensity})"
-                attr = curses.A_REVERSE if idx == selected else curses.A_NORMAL
-                stdscr.addnstr(2 + idx, 0, label, left_w - 1, attr)
+                attr = theme["selected"] if idx == selected else theme["body"]
+                _safe_add(2 + row_idx, 0, label, left_w - 1, attr)
 
             for row in range(2, height - 1):
-                stdscr.addch(row, left_w, ord("|"))
+                try:
+                    stdscr.addch(row, left_w, ord("│"), theme["muted"])
+                except curses.error:
+                    stdscr.addch(row, left_w, ord("|"), theme["muted"])
 
             section = sections[selected]
-            lines: list[str] = []
-            lines.append(section.title)
-            lines.append("")
-            lines.extend(_wrap_for_width(section.summary, right_w))
-            lines.append("")
-            lines.append("Highlights:")
+            lines: list[tuple[str, str]] = []
+            lines.append(("title", section.title))
+            lines.append(("blank", ""))
+            for item in _wrap_for_width(section.summary, right_w):
+                lines.append(("body", item))
+            lines.append(("blank", ""))
+            lines.append(("label", "Highlights:"))
             for item in section.highlights[:3]:
-                lines.extend(_wrap_for_width(f"- {item}", right_w))
-            lines.append("")
-            lines.append("Cautions:")
+                for wrapped in _wrap_for_width(f"- {item}", right_w):
+                    lines.append(("body", wrapped))
+            lines.append(("blank", ""))
+            lines.append(("label", "Cautions:"))
             for item in section.cautions[:2]:
-                lines.extend(_wrap_for_width(f"- {item}", right_w))
-            lines.append("")
-            lines.append("Actions:")
+                for wrapped in _wrap_for_width(f"- {item}", right_w):
+                    lines.append(("body", wrapped))
+            lines.append(("blank", ""))
+            lines.append(("label", "Actions:"))
             for item in section.actions[:2]:
-                lines.extend(_wrap_for_width(f"- {item}", right_w))
+                for wrapped in _wrap_for_width(f"- {item}", right_w):
+                    lines.append(("body", wrapped))
 
             if show_factors:
-                lines.append("")
-                lines.append("Factor drill-down:")
+                lines.append(("blank", ""))
+                lines.append(("label", "Factor drill-down:"))
                 for detail in section.factor_details[:8]:
                     desc = detail.factor_insights.get("lite_meaning") or ""
-                    lines.extend(_wrap_for_width(f"- {detail.factor_type}={detail.factor_value} ({detail.weight:.2f})", right_w))
+                    for wrapped in _wrap_for_width(
+                        f"- {detail.factor_type}={detail.factor_value} ({detail.weight:.2f})",
+                        right_w,
+                    ):
+                        lines.append(("factor", wrapped))
                     if desc:
-                        lines.extend(_wrap_for_width(f"  {desc}", right_w))
+                        for wrapped in _wrap_for_width(f"  {desc}", right_w):
+                            lines.append(("body", wrapped))
 
-            for idx, line in enumerate(lines):
+            max_scroll = max(0, len(lines) - page_h)
+            scroll_offset = max(0, min(scroll_offset, max_scroll))
+            visible_lines = lines[scroll_offset : scroll_offset + page_h]
+            for idx, (kind, line) in enumerate(visible_lines):
                 y = 2 + idx
                 if y >= height - 1:
                     break
-                stdscr.addnstr(y, right_x, line, right_w)
+                attr = theme["body"]
+                if kind == "title":
+                    attr = theme["accent"]
+                elif kind == "label":
+                    attr = theme["accent"]
+                elif kind == "factor":
+                    attr = theme["muted"]
+                _safe_add(y, right_x, line, right_w, attr)
+
+            footer = (
+                "q/esc quit • ↑↓ or j/k section • enter factors • pgup/pgdn scroll • g top • G end"
+            )
+            _safe_add(height - 1, 0, footer, width - 1, theme["muted"])
 
             stdscr.refresh()
             key = stdscr.getch()
@@ -2014,10 +2147,21 @@ def _run_ui(payload) -> int:
                 break
             if key in (curses.KEY_UP, ord("k")):
                 selected = (selected - 1) % len(sections)
+                scroll_offset = 0
             elif key in (curses.KEY_DOWN, ord("j")):
                 selected = (selected + 1) % len(sections)
+                scroll_offset = 0
             elif key in (10, 13, curses.KEY_ENTER):
                 show_factors = not show_factors
+                scroll_offset = 0
+            elif key in (curses.KEY_NPAGE, ord(" ")):
+                scroll_offset += max(1, page_h - 2)
+            elif key in (curses.KEY_PPAGE, ord("b")):
+                scroll_offset -= max(1, page_h - 2)
+            elif key == ord("g"):
+                scroll_offset = 0
+            elif key == ord("G"):
+                scroll_offset = 10**9
 
     curses.wrapper(_ui)
     return 0

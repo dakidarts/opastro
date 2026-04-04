@@ -86,6 +86,13 @@ opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-
 opastro ui --period daily --sign ARIES --target-date 2026-04-03
 ```
 
+Controls:
+- `↑↓` / `j,k` section navigation
+- `enter` toggle factor drill-down
+- `pgup` / `pgdn` content scroll
+- `g` / `G` jump top/end
+- `q` or `esc` quit
+
 ### Batch mode
 
 ```bash
