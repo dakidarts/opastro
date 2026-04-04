@@ -105,6 +105,7 @@ ASPECT_PRIORITY = {
     "sextile": 4,
     "quincunx": 5,
 }
+MASCULINE_SIGNS = {"ARIES", "GEMINI", "LEO", "LIBRA", "SAGITTARIUS", "AQUARIUS"}
 
 
 def _symbol(codepoint: Optional[int], fallback: str = "?") -> str:
@@ -188,6 +189,71 @@ def _major_aspect_rows(report: NatalBirthchartResponse, limit: int = 12) -> list
         )
     rows.sort(key=lambda item: (item["orb"], ASPECT_PRIORITY.get(item["aspect"], 99), item["body1"], item["body2"]))
     return rows[:limit]
+
+
+def _sign_polarity(sign: str) -> str:
+    return "masculine" if sign.upper() in MASCULINE_SIGNS else "feminine"
+
+
+def _element_percentages(report: NatalBirthchartResponse) -> dict[str, float]:
+    premium = report.premium_insights
+    if premium and premium.dominant_signature and premium.dominant_signature.element_balance:
+        base = premium.dominant_signature.element_balance
+        return {
+            "fire": round(float(base.get("fire", 0.0)) * 100.0, 1),
+            "earth": round(float(base.get("earth", 0.0)) * 100.0, 1),
+            "air": round(float(base.get("air", 0.0)) * 100.0, 1),
+            "water": round(float(base.get("water", 0.0)) * 100.0, 1),
+        }
+
+    buckets = {"fire": 0.0, "earth": 0.0, "air": 0.0, "water": 0.0}
+    sign_to_element = {
+        "ARIES": "fire",
+        "TAURUS": "earth",
+        "GEMINI": "air",
+        "CANCER": "water",
+        "LEO": "fire",
+        "VIRGO": "earth",
+        "LIBRA": "air",
+        "SCORPIO": "water",
+        "SAGITTARIUS": "fire",
+        "CAPRICORN": "earth",
+        "AQUARIUS": "air",
+        "PISCES": "water",
+    }
+    positions = [position for position in report.snapshot.positions if position.name in PLANET_STYLE]
+    total = float(len(positions) or 1)
+    for position in positions:
+        element = sign_to_element.get(position.sign)
+        if element:
+            buckets[element] += 1.0
+    return {key: round((value / total) * 100.0, 1) for key, value in buckets.items()}
+
+
+def _angle_data(report: NatalBirthchartResponse) -> dict[str, Optional[dict[str, Any]]]:
+    asc: Optional[dict[str, Any]] = None
+    mc: Optional[dict[str, Any]] = None
+    cusps = report.snapshot.house_cusps or []
+
+    if report.snapshot.rising_sign:
+        asc_lon = float(cusps[0]) if len(cusps) == 12 else None
+        asc = {
+            "sign": report.snapshot.rising_sign,
+            "longitude": round(asc_lon, 6) if asc_lon is not None else None,
+        }
+    if len(cusps) == 12:
+        mc_lon = float(cusps[9])
+        mc = {
+            "sign": ZODIAC_SIGNS[int((mc_lon % 360.0) // 30)],
+            "longitude": round(mc_lon, 6),
+        }
+    return {"ascendant": asc, "midheaven": mc}
+
+
+def _degree_in_sign(longitude: Optional[float]) -> Optional[float]:
+    if longitude is None:
+        return None
+    return round(float(longitude) % 30.0, 2)
 
 
 def build_natal_wheel_svg(
@@ -280,6 +346,29 @@ def build_natal_wheel_svg(
             f'stroke="{color}" stroke-width="{width_line:.2f}" opacity="0.58" />'
         )
 
+    angle_info = _angle_data(report)
+    asc = angle_info["ascendant"]
+    mc = angle_info["midheaven"]
+    angle_marks: list[str] = []
+
+    def _draw_angle_mark(name: str, longitude: Optional[float], color: str) -> None:
+        if longitude is None:
+            return
+        x1, y1 = _polar_xy(cx, cy, ring_outer * 0.98, longitude)
+        x2, y2 = _polar_xy(cx, cy, ring_outer * 1.07, longitude)
+        tx, ty = _polar_xy(cx, cy, ring_outer * 1.12, longitude)
+        angle_marks.append(
+            f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" '
+            f'stroke="{color}" stroke-width="2.6" opacity="0.95" />'
+        )
+        angle_marks.append(
+            f'<text x="{tx:.2f}" y="{ty:.2f}" text-anchor="middle" dominant-baseline="middle" '
+            f'font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="{color}" font-weight="700">{name}</text>'
+        )
+
+    _draw_angle_mark("ASC", asc["longitude"] if asc else None, "#22d3ee")
+    _draw_angle_mark("MC", mc["longitude"] if mc else None, "#f59e0b")
+
     points: list[str] = []
     point_labels: list[str] = []
     label_offsets = _cluster_tangent_offsets([(pos.name, pos.longitude) for pos in focus_positions], max_gap=5.0)
@@ -306,10 +395,27 @@ def build_natal_wheel_svg(
             f"{_symbol(PLANET_SYMBOL_CODEPOINT.get(position.name), position.name[:2].upper())}</text>"
         )
 
-    planet_rows_svg: list[str] = []
+    element_pct = _element_percentages(report)
+    sign_polarity = _sign_polarity(report.sign)
+
+    planet_row_h = 29.0
+    profile_row_h = 20.0
     planet_card_x = width * 0.62
     planet_card_y = height * 0.07
-    planet_row_h = 29.0
+    planet_card_w = width * 0.33
+    planet_card_h = 84 + (len(focus_positions) * planet_row_h) + (6 * profile_row_h)
+
+    aspect_card_x = width * 0.62
+    aspect_card_y = planet_card_y + planet_card_h + (height * 0.025)
+    aspect_card_w = width * 0.33
+    aspect_card_h = 72 + (min(8, len(aspect_rows)) * 24) + 16
+
+    signs_card_x = width * 0.06
+    signs_card_y = height * 0.79
+    signs_card_w = width * 0.88
+    signs_card_h = 154.0
+
+    planet_rows_svg: list[str] = []
     planet_rows_svg.append(
         f'<text x="{planet_card_x + 16:.2f}" y="{planet_card_y + 28:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
         f'fill="{accent_color}" font-weight="700">Planets &amp; Symbols</text>'
@@ -332,9 +438,36 @@ def build_natal_wheel_svg(
             f'<text x="{planet_card_x + 238:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{retro}</text>'
         )
 
+    profile_start_y = planet_card_y + 72 + (len(focus_positions) * planet_row_h) + 8
+    asc_text = "-"
+    if asc:
+        asc_degree = _degree_in_sign(asc["longitude"])
+        asc_text = f"{asc['sign']}" + (f" ({asc_degree:.2f}°)" if asc_degree is not None else "")
+    mc_text = "-"
+    if mc:
+        mc_degree = _degree_in_sign(mc["longitude"])
+        mc_text = f"{mc['sign']}" + (f" ({mc_degree:.2f}°)" if mc_degree is not None else "")
+    profile_lines = [
+        ("Profile", accent_color, 13.5, True),
+        (f"Polarity: {sign_polarity.title()}", "#d7e2f4", 12.2, False),
+        (
+            f"Elem %  F {element_pct['fire']:.1f}  E {element_pct['earth']:.1f}  A {element_pct['air']:.1f}  W {element_pct['water']:.1f}",
+            "#d7e2f4",
+            11.4,
+            False,
+        ),
+        (f"ASC: {asc_text}", "#9be7ff", 12.0, False),
+        (f"MC:  {mc_text}", "#ffd586", 12.0, False),
+    ]
+    for idx, (line, color, font_size, bold) in enumerate(profile_lines):
+        y = profile_start_y + (idx * profile_row_h)
+        weight = ' font-weight="700"' if bold else ""
+        planet_rows_svg.append(
+            f'<text x="{planet_card_x + 16:.2f}" y="{y:.2f}" font-size="{font_size}" font-family="{TEXT_FONT_STACK}" '
+            f'fill="{color}"{weight}>{line}</text>'
+        )
+
     aspect_rows_svg: list[str] = []
-    aspect_card_x = width * 0.62
-    aspect_card_y = height * 0.56
     aspect_rows_svg.append(
         f'<text x="{aspect_card_x + 16:.2f}" y="{aspect_card_y + 28:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
         f'fill="{accent_color}" font-weight="700">Aspects &amp; Symbols</text>'
@@ -354,9 +487,6 @@ def build_natal_wheel_svg(
         )
 
     signs_grid_svg: list[str] = []
-    signs_card_x = width * 0.06
-    signs_card_y = height * 0.73
-    signs_card_w = width * 0.88
     signs_grid_svg.append(
         f'<text x="{signs_card_x + 16:.2f}" y="{signs_card_y + 28:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
         f'fill="{accent_color}" font-weight="700">Signs &amp; Symbols</text>'
@@ -390,9 +520,9 @@ def build_natal_wheel_svg(
   {background}
   <rect x="0" y="0" width="{width}" height="{height}" fill="url(#wheelBg)" />
 
-  <rect x="{width * 0.62:.2f}" y="{height * 0.07:.2f}" width="{width * 0.33:.2f}" height="{height * 0.43:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
-  <rect x="{width * 0.62:.2f}" y="{height * 0.56:.2f}" width="{width * 0.33:.2f}" height="{height * 0.15:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
-  <rect x="{width * 0.06:.2f}" y="{height * 0.73:.2f}" width="{width * 0.88:.2f}" height="{height * 0.21:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
+  <rect x="{planet_card_x:.2f}" y="{planet_card_y:.2f}" width="{planet_card_w:.2f}" height="{planet_card_h:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
+  <rect x="{aspect_card_x:.2f}" y="{aspect_card_y:.2f}" width="{aspect_card_w:.2f}" height="{aspect_card_h:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
+  <rect x="{signs_card_x:.2f}" y="{signs_card_y:.2f}" width="{signs_card_w:.2f}" height="{signs_card_h:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
 
   <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_outer:.2f}" fill="none" stroke="{accent_color}" stroke-width="3.1" />
   <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner:.2f}" fill="none" stroke="#34486a" stroke-width="2.3" />
@@ -405,6 +535,7 @@ def build_natal_wheel_svg(
   {''.join(aspect_lines)}
   {''.join(points)}
   {''.join(point_labels)}
+  {''.join(angle_marks)}
 
   <text x="{width * 0.06:.2f}" y="{height * 0.08:.2f}" font-size="44" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{brand_title}</text>
   <text x="{width * 0.06:.2f}" y="{height * 0.11:.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="#8fa2c2">{wheel_title}</text>
@@ -504,10 +635,17 @@ def build_house_overlay_map(report: NatalBirthchartResponse) -> dict[str, Any]:
             for item in premium.life_area_vectors
         ]
 
+    element_pct = _element_percentages(report)
+    angle_info = _angle_data(report)
+
     return {
         "report_type": report.report_type.value,
         "sign": report.sign,
         "birth_date": report.birth.date.isoformat(),
+        "sign_polarity": _sign_polarity(report.sign),
+        "element_percentages": element_pct,
+        "ascendant": angle_info["ascendant"],
+        "midheaven": angle_info["midheaven"],
         "house_system": report.snapshot.house_system,
         "rising_sign": report.snapshot.rising_sign,
         "houses": house_rows,
@@ -588,6 +726,47 @@ def build_natal_report_pdf(
     except Exception:
         # Keep PDF generation resilient even if PNG conversion fails in target env.
         pass
+
+    element_pct = _element_percentages(report)
+    angle_info = _angle_data(report)
+    asc = angle_info["ascendant"]
+    mc = angle_info["midheaven"]
+    asc_text = "-"
+    if asc:
+        asc_deg = _degree_in_sign(asc["longitude"])
+        asc_text = f"{asc['sign']}" + (f" ({asc_deg:.2f}°)" if asc_deg is not None else "")
+    mc_text = "-"
+    if mc:
+        mc_deg = _degree_in_sign(mc["longitude"])
+        mc_text = f"{mc['sign']}" + (f" ({mc_deg:.2f}°)" if mc_deg is not None else "")
+
+    story.append(Paragraph("Sign Profile", subtitle_style))
+    profile_rows = [
+        ["Polarity", _sign_polarity(report.sign).title(), "ASC", asc_text],
+        [
+            "Fire / Earth",
+            f"{element_pct['fire']:.1f}% / {element_pct['earth']:.1f}%",
+            "MC",
+            mc_text,
+        ],
+        ["Air / Water", f"{element_pct['air']:.1f}% / {element_pct['water']:.1f}%", "Sign", report.sign],
+    ]
+    profile_table = Table(profile_rows, colWidths=[30 * mm, 52 * mm, 22 * mm, 64 * mm])
+    profile_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e1")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#dbe5f2")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
+                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#f8fafc"), colors.white]),
+            ]
+        )
+    )
+    story.append(profile_table)
+    story.append(Spacer(1, 8))
 
     planet_rows = [["Sy", "Planet", "Sign", "House", "R"]]
     for position in sorted([p for p in report.snapshot.positions if p.name in PLANET_STYLE], key=lambda x: x.name):

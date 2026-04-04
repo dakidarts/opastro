@@ -168,6 +168,8 @@ These endpoints reuse `NatalBirthchartRequest`:
 - `POST /natal-birthchart/wheel.png` -> `image/png`
 - `POST /natal-birthchart/house-overlay` -> JSON map:
   - `report_type`, `sign`, `birth_date`
+  - `sign_polarity`, `element_percentages` (`fire`, `earth`, `air`, `water`)
+  - `ascendant` / `midheaven` (`sign`, `longitude`)
   - `house_system`, `rising_sign`
   - `houses[]` (`house`, `cusp_longitude`, `cusp_sign`, `start_longitude`, `end_longitude`, `midpoint_longitude`, `arc_degrees`, `wraps_aries`, `occupants[]`)
   - `life_area_vectors[]` (`area`, `score`, `emphasis`, `drivers[]`)

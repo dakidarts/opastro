@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://pypi.org/project/opastro/"><img src="https://img.shields.io/badge/%F0%9F%93%A6%20PyPI-opastro-blue" alt="PyPI Package"></a>
-  <a href="https://opastro.com"><img src="https://img.shields.io/badge/%F0%9F%8C%90%20Website-numerologyapi.com-green" alt="Website"></a>
+  <a href="https://opastro.com"><img src="https://img.shields.io/badge/%F0%9F%8C%90%20Website-opastro.com-green" alt="Website"></a>
   <a href="https://github.com/dakidarts/opastro"><img src="https://img.shields.io/badge/%E2%AD%90%20GitHub-dakidarts%2Fopastro-purple" alt="GitHub Repo"></a>
 </p>
 
