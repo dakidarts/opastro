@@ -195,6 +195,7 @@ uvicorn horoscope_engine.main:app --host 127.0.0.1 --port 8000 --reload
 - `POST /horoscope`
 - `POST /birthday-horoscope`
 - `POST /planet-horoscope`
+- `POST /natal-birthchart`
 - `GET /metrics`
 - `POST /admin/pregenerate`
 
@@ -204,6 +205,14 @@ uvicorn horoscope_engine.main:app --host 127.0.0.1 --port 8000 --reload
 curl -X POST http://127.0.0.1:8000/horoscope \
   -H "Content-Type: application/json" \
   -d '{"period":"daily","sign":"ARIES"}'
+```
+
+### Natal Birthchart API Call
+
+```bash
+curl -X POST http://127.0.0.1:8000/natal-birthchart \
+  -H "Content-Type: application/json" \
+  -d '{"birth":{"date":"2004-06-14","time":"09:30","coordinates":{"latitude":4.0511,"longitude":9.7679},"timezone":"Africa/Douala"}}'
 ```
 
 ## Environment Variables

@@ -10,6 +10,7 @@ Base URL (local): `http://127.0.0.1:8000`
 | `POST` | `/horoscope` | Standard period report |
 | `POST` | `/birthday-horoscope` | Birthday-cycle yearly report |
 | `POST` | `/planet-horoscope` | Planet-focused report |
+| `POST` | `/natal-birthchart` | Natal chart snapshot + sign derivation report |
 | `GET` | `/metrics` | Request/cache metrics snapshot |
 | `POST` | `/admin/pregenerate` | Cache pre-generation utility |
 
@@ -80,6 +81,29 @@ Notes:
   "sections": ["general", "communication"]
 }
 ```
+
+## `POST /natal-birthchart`
+
+### Request body
+
+```json
+{
+  "birth": {
+    "date": "2004-06-14",
+    "time": "09:30",
+    "coordinates": {"latitude": 4.0511, "longitude": 9.7679},
+    "timezone": "Africa/Douala"
+  },
+  "zodiac_system": "tropical",
+  "house_system": "placidus"
+}
+```
+
+Notes:
+- `birth.date` is required.
+- `birth.time` is optional (defaults to noon in engine logic).
+- `rising_sign` and full `house_cusps` require both `birth.time` and coordinates.
+- Alias route: `POST /natal-birthchart-report`.
 
 ## Headers
 

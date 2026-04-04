@@ -17,6 +17,8 @@ from .models import (
     BirthdayHoroscopeRequest,
     HoroscopeRequest,
     HoroscopeResponse,
+    NatalBirthchartRequest,
+    NatalBirthchartResponse,
     Period,
     PeriodCelestialData,
     PlanetHoroscopeRequest,
@@ -331,6 +333,23 @@ class HoroscopeService:
             sections=insights,
         )
 
+    def generate_natal_birthchart(self, request: NatalBirthchartRequest) -> NatalBirthchartResponse:
+        ephemeris = self._resolve_ephemeris(request)
+        include_houses = self._can_use_precise_houses(request.birth)
+        coordinates = self._coords_tuple(request.birth) if include_houses else None
+        snapshot = ephemeris.chart_snapshot(
+            self._birth_datetime(request.birth),
+            include_houses=include_houses,
+            coordinates=coordinates,
+        )
+        return NatalBirthchartResponse(
+            report_type=ReportType.NATAL_BIRTHCHART,
+            sign=snapshot.sun_sign,
+            birth=request.birth,
+            snapshot=snapshot,
+            notable_events=self._build_notable_events(snapshot),
+        )
+
     def _resolve_sign(self, sign: Optional[str], birth: Optional[BirthData], ephemeris: EphemerisEngine) -> str:
         if sign:
             return sign
@@ -347,7 +366,7 @@ class HoroscopeService:
 
     def _resolve_ephemeris(
         self,
-        request: HoroscopeRequest | BirthdayHoroscopeRequest | PlanetHoroscopeRequest,
+        request: HoroscopeRequest | BirthdayHoroscopeRequest | PlanetHoroscopeRequest | NatalBirthchartRequest,
     ) -> EphemerisEngine:
         if not request.zodiac_system and not request.ayanamsa and not request.house_system and not request.node_type:
             return self._default_ephemeris

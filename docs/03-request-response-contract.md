@@ -63,6 +63,13 @@ Fields:
 - `planet` (required)
 - `sign`/`birth` and other optional fields similar to `HoroscopeRequest`
 
+## `NatalBirthchartRequest`
+
+Fields:
+- `birth` (required)
+- `zodiac_system`, `ayanamsa`, `house_system`, `node_type` (optional)
+- `tenant_id` (optional, max length 64)
+
 ## Shared Birth Model
 
 ```json
@@ -83,6 +90,15 @@ Top-level fields:
 - `start`, `end`
 - `data`
 - `sections`
+
+## Response Model: `NatalBirthchartResponse`
+
+Top-level fields:
+- `report_type`: `natal_birthchart`
+- `sign` (derived from natal sun sign)
+- `birth`
+- `snapshot` (`ChartSnapshot`)
+- `notable_events` (list of strings)
 
 ## `data` (`PeriodCelestialData`)
 - `period`, `start`, `end`

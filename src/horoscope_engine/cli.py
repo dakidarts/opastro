@@ -43,7 +43,11 @@ WELCOME_BANNER = r"""
 \____/_/    /_/  |_/____/ /_/  /_/ |_| \____/  
 """
 
-UPSELL_TEXT = "✨ Want deeper insights?\n→ Unlock full readings: https://numerologyapi.com"
+UPSELL_TEXT = (
+    "✨ Want deeper insights?\n"
+    "→ Explore OpAstro CLI platform: https://opastro.com\n"
+    "→ Unlock full readings: https://numerologyapi.com"
+)
 
 DEFAULT_WRAP_WIDTH = 96
 MIN_PYTHON_VERSION = (3, 11)

@@ -55,6 +55,7 @@ class ReportType(str, Enum):
     HOROSCOPE = "horoscope"
     BIRTHDAY = "birthday"
     PLANET = "planet"
+    NATAL_BIRTHCHART = "natal_birthchart"
 
 
 class PlanetName(str, Enum):
@@ -219,6 +220,17 @@ class PlanetHoroscopeRequest(BaseModel):
         return value
 
 
+class NatalBirthchartRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    birth: BirthData
+    zodiac_system: Optional[ZodiacSystem] = None
+    ayanamsa: Optional[AyanamsaSystem] = None
+    house_system: Optional[HouseSystem] = None
+    node_type: Optional[NodeType] = None
+    tenant_id: Optional[str] = Field(default=None, max_length=64)
+
+
 class BodyPosition(BaseModel):
     name: str
     longitude: float
@@ -319,6 +331,16 @@ class HoroscopeResponse(BaseModel):
     end: datetime
     data: PeriodCelestialData
     sections: List[SectionInsight]
+
+
+class NatalBirthchartResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_type: ReportType = ReportType.NATAL_BIRTHCHART
+    sign: str
+    birth: BirthData
+    snapshot: ChartSnapshot
+    notable_events: List[str] = Field(default_factory=list)
 
 
 class PregenRequest(BaseModel):

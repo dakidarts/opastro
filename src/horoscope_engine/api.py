@@ -10,7 +10,16 @@ from .cache import cache_from_env
 from .cache_keys import build_cache_key
 from .config import ServiceConfig
 from .healthcheck import run_content_coverage_healthcheck
-from .models import BirthdayHoroscopeRequest, HoroscopeRequest, HoroscopeResponse, Period, PlanetHoroscopeRequest, PregenRequest
+from .models import (
+    BirthdayHoroscopeRequest,
+    HoroscopeRequest,
+    HoroscopeResponse,
+    NatalBirthchartRequest,
+    NatalBirthchartResponse,
+    Period,
+    PlanetHoroscopeRequest,
+    PregenRequest,
+)
 from .observability import MetricsCollector, Timer
 from .pregen import pregenerate
 from .service import HoroscopeService
@@ -167,6 +176,50 @@ async def get_planet_horoscope(
 
     try:
         response = service.generate_planet(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    cache.set(cache_key, response.model_dump_json())
+    metrics.record_cache_miss()
+    metrics.record_request(timer.elapsed_ms())
+    return response
+
+
+@app.post("/natal-birthchart", response_model=NatalBirthchartResponse)
+@app.post("/natal-birthchart-report", response_model=NatalBirthchartResponse)
+async def get_natal_birthchart_report(
+    request: NatalBirthchartRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> NatalBirthchartResponse:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    birth = request.birth
+    cache_key = build_cache_key(
+        tenant_id=tenant,
+        period=Period.YEARLY,
+        sign=None,
+        sign_source="derived",
+        sections=None,
+        target_date=birth.date,
+        birth_date=birth.date.isoformat(),
+        birth_time=birth.time,
+        birth_latitude=birth.coordinates.latitude if birth.coordinates else None,
+        birth_longitude=birth.coordinates.longitude if birth.coordinates else None,
+        birth_timezone=birth.timezone,
+        zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
+        ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
+        house_system=request.house_system.value if request.house_system else None,
+        node_type=request.node_type.value if request.node_type else None,
+        key_namespace="natal_birthchart",
+    )
+    cached = cache.get(cache_key)
+    if cached:
+        metrics.record_cache_hit()
+        metrics.record_request(timer.elapsed_ms())
+        return NatalBirthchartResponse.model_validate_json(cached)
+
+    try:
+        response = service.generate_natal_birthchart(request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
