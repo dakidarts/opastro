@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import math
 from datetime import date
 from io import BytesIO
@@ -9,6 +8,26 @@ from typing import Any, Optional
 from .models import NatalBirthchartResponse, ZODIAC_SIGNS
 
 ACCENT_DEFAULT = "#3ddd77"
+SYMBOL_FONT_STACK = (
+    "'Apple Symbols','Segoe UI Symbol','Noto Sans Symbols2','Symbola',"
+    "'DejaVu Sans','Arial Unicode MS','Helvetica','Arial',sans-serif"
+)
+TEXT_FONT_STACK = "'Menlo','Consolas','SFMono-Regular','DejaVu Sans Mono','Liberation Mono',monospace"
+
+ZODIAC_SYMBOL_CODEPOINT = {
+    "ARIES": 0x2648,
+    "TAURUS": 0x2649,
+    "GEMINI": 0x264A,
+    "CANCER": 0x264B,
+    "LEO": 0x264C,
+    "VIRGO": 0x264D,
+    "LIBRA": 0x264E,
+    "SCORPIO": 0x264F,
+    "SAGITTARIUS": 0x2650,
+    "CAPRICORN": 0x2651,
+    "AQUARIUS": 0x2652,
+    "PISCES": 0x2653,
+}
 PLANET_STYLE = {
     "Sun": "#f59e0b",
     "Moon": "#60a5fa",
@@ -22,11 +41,116 @@ PLANET_STYLE = {
     "Pluto": "#9333ea",
     "Chiron": "#14b8a6",
 }
+PLANET_SYMBOL_CODEPOINT = {
+    "Sun": 0x2609,
+    "Moon": 0x263D,
+    "Mercury": 0x263F,
+    "Venus": 0x2640,
+    "Mars": 0x2642,
+    "Jupiter": 0x2643,
+    "Saturn": 0x2644,
+    "Uranus": 0x2645,
+    "Neptune": 0x2646,
+    "Pluto": 0x2647,
+    "Chiron": 0x26B7,
+}
+PLANET_TOKEN = {
+    "Sun": "Su",
+    "Moon": "Mo",
+    "Mercury": "Me",
+    "Venus": "Ve",
+    "Mars": "Ma",
+    "Jupiter": "Ju",
+    "Saturn": "Sa",
+    "Uranus": "Ur",
+    "Neptune": "Ne",
+    "Pluto": "Pl",
+    "Chiron": "Ch",
+}
+ASPECT_SYMBOL_TEXT = {
+    "conjunction": "●",
+    "opposition": "☍",
+    "trine": "△",
+    "square": "□",
+    "sextile": "*",
+    "quincunx": "∿",
+    "semi-sextile": "+",
+    "semi-square": "∠",
+    "sesquiquadrate": "⟂",
+}
+ASPECT_TOKEN = {
+    "conjunction": "Conj",
+    "opposition": "Opp",
+    "trine": "Tri",
+    "square": "Sqr",
+    "sextile": "Sxt",
+    "quincunx": "Qnx",
+    "semi-sextile": "SSx",
+    "semi-square": "SSq",
+    "sesquiquadrate": "Sesq",
+}
+ASPECT_LINE_COLOR = {
+    "conjunction": "#f59e0b",
+    "opposition": "#ef4444",
+    "trine": "#22c55e",
+    "square": "#f97316",
+    "sextile": "#38bdf8",
+    "quincunx": "#a78bfa",
+}
+ASPECT_PRIORITY = {
+    "conjunction": 0,
+    "opposition": 1,
+    "trine": 2,
+    "square": 3,
+    "sextile": 4,
+    "quincunx": 5,
+}
+
+
+def _symbol(codepoint: Optional[int], fallback: str = "?") -> str:
+    if codepoint is None:
+        return fallback
+    try:
+        return chr(codepoint)
+    except Exception:
+        return fallback
 
 
 def _polar_xy(cx: float, cy: float, radius: float, longitude: float) -> tuple[float, float]:
     angle = math.radians((longitude % 360.0) - 90.0)
     return (cx + radius * math.cos(angle), cy + radius * math.sin(angle))
+
+
+def _cluster_tangent_offsets(items: list[tuple[str, float]], max_gap: float = 4.5) -> dict[str, float]:
+    if not items:
+        return {}
+    sorted_items = sorted(items, key=lambda item: item[1] % 360.0)
+    clusters: list[list[tuple[str, float]]] = []
+    current: list[tuple[str, float]] = [sorted_items[0]]
+
+    for item in sorted_items[1:]:
+        prev = current[-1]
+        if ((item[1] - prev[1]) % 360.0) <= max_gap:
+            current.append(item)
+        else:
+            clusters.append(current)
+            current = [item]
+    clusters.append(current)
+
+    if len(clusters) > 1:
+        first = clusters[0]
+        last = clusters[-1]
+        if ((first[0][1] + 360.0 - last[-1][1]) % 360.0) <= max_gap:
+            merged = last + first
+            clusters = [merged] + clusters[1:-1]
+
+    offsets: dict[str, float] = {}
+    for cluster in clusters:
+        count = len(cluster)
+        center = (count - 1) / 2.0
+        for idx, (name, _) in enumerate(cluster):
+            offsets[name] = (idx - center) * 14.0
+    return offsets
 
 
 def _house_from_cusps(longitude: float, cusps: list[float]) -> Optional[int]:
@@ -46,6 +170,26 @@ def _house_from_cusps(longitude: float, cusps: list[float]) -> Optional[int]:
     return None
 
 
+def _major_aspect_rows(report: NatalBirthchartResponse, limit: int = 12) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for aspect in report.snapshot.aspects:
+        if aspect.body1 not in PLANET_STYLE or aspect.body2 not in PLANET_STYLE:
+            continue
+        if aspect.aspect not in ASPECT_SYMBOL_TEXT:
+            continue
+        rows.append(
+            {
+                "body1": aspect.body1,
+                "body2": aspect.body2,
+                "aspect": aspect.aspect,
+                "orb": float(aspect.orb),
+                "exact": bool(aspect.exact),
+            }
+        )
+    rows.sort(key=lambda item: (item["orb"], ASPECT_PRIORITY.get(item["aspect"], 99), item["body1"], item["body2"]))
+    return rows[:limit]
+
+
 def build_natal_wheel_svg(
     report: NatalBirthchartResponse,
     *,
@@ -53,14 +197,17 @@ def build_natal_wheel_svg(
     size: int = 1080,
     brand_title: str = "OPASTRO",
 ) -> str:
-    size = max(640, int(size))
-    cx = size / 2.0
-    cy = size / 2.0
-    ring_outer = size * 0.45
-    ring_inner = size * 0.30
-    planet_radius = size * 0.255
-    sign_label_radius = size * 0.41
-    house_label_radius = size * 0.335
+    width = max(760, int(size))
+    height = int(width * 1.45)
+
+    cx = width * 0.34
+    cy = height * 0.33
+    ring_outer = width * 0.25
+    ring_inner = width * 0.17
+    planet_radius = width * 0.145
+    sign_symbol_radius = width * 0.225
+    sign_name_radius = width * 0.205
+    house_label_radius = width * 0.185
 
     sign_lines: list[str] = []
     sign_labels: list[str] = []
@@ -70,85 +217,201 @@ def build_natal_wheel_svg(
         x2, y2 = _polar_xy(cx, cy, ring_outer, start_lon)
         sign_lines.append(
             f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" '
-            'stroke="#334155" stroke-width="1.6" opacity="0.85" />'
+            'stroke="#2b3f63" stroke-width="1.7" opacity="0.90" />'
         )
 
         mid_lon = start_lon + 15.0
-        lx, ly = _polar_xy(cx, cy, sign_label_radius, mid_lon)
+        sx, sy = _polar_xy(cx, cy, sign_symbol_radius, mid_lon)
+        nx, ny = _polar_xy(cx, cy, sign_name_radius, mid_lon)
         sign_labels.append(
-            f'<text x="{lx:.2f}" y="{ly:.2f}" text-anchor="middle" dominant-baseline="middle" '
-            'font-size="21" font-family="Menlo, Consolas, monospace" fill="#e2e8f0">'
-            f"{sign[:3]}</text>"
+            f'<text x="{sx:.2f}" y="{sy:.2f}" text-anchor="middle" dominant-baseline="middle" '
+            f'font-size="24" font-family="{SYMBOL_FONT_STACK}" fill="#e2e8f0">'
+            f"{_symbol(ZODIAC_SYMBOL_CODEPOINT.get(sign), sign[:2])}</text>"
+        )
+        sign_labels.append(
+            f'<text x="{nx:.2f}" y="{ny:.2f}" text-anchor="middle" dominant-baseline="middle" '
+            f'font-size="13" font-family="{TEXT_FONT_STACK}" fill="#9fb0cd">{sign[:3]}</text>'
         )
 
+    cusps = report.snapshot.house_cusps or []
     house_lines: list[str] = []
     house_labels: list[str] = []
-    cusps = report.snapshot.house_cusps or []
     if len(cusps) == 12:
-        for idx, cusp in enumerate(cusps):
-            hx1, hy1 = _polar_xy(cx, cy, ring_inner * 0.92, cusp)
-            hx2, hy2 = _polar_xy(cx, cy, ring_outer * 0.98, cusp)
-            house_lines.append(
-                f'<line x1="{hx1:.2f}" y1="{hy1:.2f}" x2="{hx2:.2f}" y2="{hy2:.2f}" '
-                f'stroke="{accent_color}" stroke-width="2.0" opacity="0.95" />'
-            )
-            mid = (cusp + 15.0) % 360.0
-            tx, ty = _polar_xy(cx, cy, house_label_radius, mid)
-            house_labels.append(
-                f'<text x="{tx:.2f}" y="{ty:.2f}" text-anchor="middle" dominant-baseline="middle" '
-                f'font-size="16" font-family="Menlo, Consolas, monospace" fill="{accent_color}">{idx + 1}</text>'
-            )
+        house_starts = list(cusps)
+    else:
+        house_starts = [idx * 30.0 for idx in range(12)]
+    for idx, cusp in enumerate(house_starts):
+        hx1, hy1 = _polar_xy(cx, cy, ring_inner * 0.88, cusp)
+        hx2, hy2 = _polar_xy(cx, cy, ring_outer * 0.99, cusp)
+        house_lines.append(
+            f'<line x1="{hx1:.2f}" y1="{hy1:.2f}" x2="{hx2:.2f}" y2="{hy2:.2f}" '
+            f'stroke="{accent_color}" stroke-width="2.0" opacity="0.95" />'
+        )
+        next_cusp = house_starts[(idx + 1) % 12]
+        arc = (next_cusp - cusp) % 360.0
+        mid = (cusp + (arc / 2.0)) % 360.0
+        tx, ty = _polar_xy(cx, cy, house_label_radius, mid)
+        house_labels.append(
+            f'<text x="{tx:.2f}" y="{ty:.2f}" text-anchor="middle" dominant-baseline="middle" '
+            f'font-size="17" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{idx + 1}</text>'
+        )
+
+    focus_positions = sorted(
+        [pos for pos in report.snapshot.positions if pos.name in PLANET_STYLE],
+        key=lambda item: item.longitude,
+    )
+    point_map: dict[str, tuple[float, float]] = {}
+    for position in focus_positions:
+        point_map[position.name] = _polar_xy(cx, cy, planet_radius, position.longitude)
+
+    aspect_rows = _major_aspect_rows(report, limit=12)
+    aspect_lines: list[str] = []
+    for row in aspect_rows:
+        if row["aspect"] == "conjunction":
+            continue
+        p1 = point_map.get(row["body1"])
+        p2 = point_map.get(row["body2"])
+        if not p1 or not p2:
+            continue
+        color = ASPECT_LINE_COLOR.get(row["aspect"], "#94a3b8")
+        width_line = 1.6 if row["exact"] else 1.1
+        aspect_lines.append(
+            f'<line x1="{p1[0]:.2f}" y1="{p1[1]:.2f}" x2="{p2[0]:.2f}" y2="{p2[1]:.2f}" '
+            f'stroke="{color}" stroke-width="{width_line:.2f}" opacity="0.58" />'
+        )
 
     points: list[str] = []
     point_labels: list[str] = []
-    legend_lines: list[str] = []
-    focus_positions = [pos for pos in report.snapshot.positions if pos.name in PLANET_STYLE]
-    for idx, position in enumerate(focus_positions):
-        x, y = _polar_xy(cx, cy, planet_radius, position.longitude)
+    label_offsets = _cluster_tangent_offsets([(pos.name, pos.longitude) for pos in focus_positions], max_gap=5.0)
+    for position in focus_positions:
+        x, y = point_map[position.name]
         color = PLANET_STYLE.get(position.name, "#f8fafc")
         points.append(
-            f'<circle cx="{x:.2f}" cy="{y:.2f}" r="6.2" fill="{color}" stroke="#0f172a" stroke-width="1.1" />'
+            f'<circle cx="{x:.2f}" cy="{y:.2f}" r="6.3" fill="{color}" stroke="#0f172a" stroke-width="1.15" />'
+        )
+        theta = math.radians((position.longitude % 360.0) - 90.0)
+        tangent_x = -math.sin(theta)
+        tangent_y = math.cos(theta)
+        base_lx, base_ly = _polar_xy(cx, cy, planet_radius - 21.0, position.longitude)
+        tangent_offset = label_offsets.get(position.name, 0.0)
+        lx = base_lx + (tangent_x * tangent_offset)
+        ly = base_ly + (tangent_y * tangent_offset)
+        point_labels.append(
+            f'<line x1="{x:.2f}" y1="{y:.2f}" x2="{lx:.2f}" y2="{ly:.2f}" '
+            'stroke="#90a4c5" stroke-width="0.9" opacity="0.75" />'
         )
         point_labels.append(
-            f'<text x="{x:.2f}" y="{(y - 14):.2f}" text-anchor="middle" dominant-baseline="middle" '
-            'font-size="12" font-family="Menlo, Consolas, monospace" fill="#f8fafc">'
-            f"{position.name[:2].upper()}</text>"
+            f'<text x="{lx:.2f}" y="{ly:.2f}" text-anchor="middle" dominant-baseline="middle" '
+            f'font-size="15" font-family="{SYMBOL_FONT_STACK}" fill="#f8fafc">'
+            f"{_symbol(PLANET_SYMBOL_CODEPOINT.get(position.name), position.name[:2].upper())}</text>"
         )
-        legend_y = size * 0.14 + (idx * 24)
-        legend_lines.append(
-            f'<circle cx="{size * 0.78:.2f}" cy="{legend_y:.2f}" r="5.0" fill="{color}" />'
-            f'<text x="{size * 0.80:.2f}" y="{legend_y + 1.5:.2f}" font-size="14" '
-            'font-family="Menlo, Consolas, monospace" fill="#cbd5e1">'
-            f"{position.name} {position.sign}</text>"
+
+    planet_rows_svg: list[str] = []
+    planet_card_x = width * 0.62
+    planet_card_y = height * 0.07
+    planet_row_h = 29.0
+    planet_rows_svg.append(
+        f'<text x="{planet_card_x + 16:.2f}" y="{planet_card_y + 28:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
+        f'fill="{accent_color}" font-weight="700">Planets &amp; Symbols</text>'
+    )
+    planet_rows_svg.append(
+        f'<text x="{planet_card_x + 16:.2f}" y="{planet_card_y + 50:.2f}" font-size="11.5" font-family="{TEXT_FONT_STACK}" fill="#8ca0c2">'
+        "Sy   Planet      Sign    H   R</text>"
+    )
+    for idx, position in enumerate(focus_positions):
+        y = planet_card_y + 70 + (idx * planet_row_h)
+        symbol = _symbol(PLANET_SYMBOL_CODEPOINT.get(position.name), position.name[:2].upper())
+        sign_symbol = _symbol(ZODIAC_SYMBOL_CODEPOINT.get(position.sign), position.sign[:2])
+        retro = "R" if position.retrograde else "-"
+        planet_rows_svg.append(
+            f'<text x="{planet_card_x + 18:.2f}" y="{y:.2f}" font-size="15" font-family="{SYMBOL_FONT_STACK}" fill="{PLANET_STYLE.get(position.name)}">{symbol}</text>'
+            f'<text x="{planet_card_x + 44:.2f}" y="{y:.2f}" font-size="13" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{position.name[:8].ljust(8)}</text>'
+            f'<text x="{planet_card_x + 130:.2f}" y="{y:.2f}" font-size="14" font-family="{SYMBOL_FONT_STACK}" fill="#d7e2f4">{sign_symbol}</text>'
+            f'<text x="{planet_card_x + 154:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{position.sign[:3]}</text>'
+            f'<text x="{planet_card_x + 212:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{position.house or "-"}</text>'
+            f'<text x="{planet_card_x + 238:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{retro}</text>'
+        )
+
+    aspect_rows_svg: list[str] = []
+    aspect_card_x = width * 0.62
+    aspect_card_y = height * 0.56
+    aspect_rows_svg.append(
+        f'<text x="{aspect_card_x + 16:.2f}" y="{aspect_card_y + 28:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
+        f'fill="{accent_color}" font-weight="700">Aspects &amp; Symbols</text>'
+    )
+    aspect_rows_svg.append(
+        f'<text x="{aspect_card_x + 16:.2f}" y="{aspect_card_y + 50:.2f}" font-size="11.5" font-family="{TEXT_FONT_STACK}" fill="#8ca0c2">'
+        "Sy   Pair                           Orb</text>"
+    )
+    for idx, row in enumerate(aspect_rows[:8]):
+        y = aspect_card_y + 72 + (idx * 24)
+        symbol = ASPECT_SYMBOL_TEXT.get(row["aspect"], "*")
+        pair = f"{row['body1'][:3]} {row['aspect'][:4]} {row['body2'][:3]}"
+        aspect_rows_svg.append(
+            f'<text x="{aspect_card_x + 18:.2f}" y="{y:.2f}" font-size="14" font-family="{SYMBOL_FONT_STACK}" fill="{ASPECT_LINE_COLOR.get(row["aspect"], "#d7e2f4")}">{symbol}</text>'
+            f'<text x="{aspect_card_x + 42:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{pair}</text>'
+            f'<text x="{aspect_card_x + 230:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{row["orb"]:.2f}</text>'
+        )
+
+    signs_grid_svg: list[str] = []
+    signs_card_x = width * 0.06
+    signs_card_y = height * 0.73
+    signs_card_w = width * 0.88
+    signs_grid_svg.append(
+        f'<text x="{signs_card_x + 16:.2f}" y="{signs_card_y + 28:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
+        f'fill="{accent_color}" font-weight="700">Signs &amp; Symbols</text>'
+    )
+    columns = 4
+    cell_w = (signs_card_w - 30.0) / columns
+    for idx, sign in enumerate(ZODIAC_SIGNS):
+        row_idx = idx // columns
+        col_idx = idx % columns
+        x = signs_card_x + 16 + (col_idx * cell_w)
+        y = signs_card_y + 58 + (row_idx * 32)
+        symbol = _symbol(ZODIAC_SYMBOL_CODEPOINT.get(sign), sign[:2])
+        signs_grid_svg.append(
+            f'<text x="{x:.2f}" y="{y:.2f}" font-size="16" font-family="{SYMBOL_FONT_STACK}" fill="#e2e8f0">{symbol}</text>'
+            f'<text x="{(x + 22):.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{sign.title()}</text>'
         )
 
     background = (
         '<defs>'
-        '<radialGradient id="wheelBg" cx="35%" cy="25%" r="85%">'
-        '<stop offset="0%" stop-color="#0b1324" />'
-        '<stop offset="60%" stop-color="#101b31" />'
-        '<stop offset="100%" stop-color="#0a1223" />'
+        '<radialGradient id="wheelBg" cx="30%" cy="18%" r="88%">'
+        '<stop offset="0%" stop-color="#0b1730" />'
+        '<stop offset="55%" stop-color="#101d38" />'
+        '<stop offset="100%" stop-color="#0a1326" />'
         "</radialGradient>"
         "</defs>"
     )
 
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" viewBox="0 0 {size} {size}">
+    wheel_title = f"Natal Wheel • {report.sign} • {report.birth.date.isoformat()}"
+
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
   {background}
-  <rect x="0" y="0" width="{size}" height="{size}" fill="url(#wheelBg)" />
-  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_outer:.2f}" fill="none" stroke="{accent_color}" stroke-width="3.2" />
-  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner:.2f}" fill="none" stroke="#334155" stroke-width="2.4" />
+  <rect x="0" y="0" width="{width}" height="{height}" fill="url(#wheelBg)" />
+
+  <rect x="{width * 0.62:.2f}" y="{height * 0.07:.2f}" width="{width * 0.33:.2f}" height="{height * 0.43:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
+  <rect x="{width * 0.62:.2f}" y="{height * 0.56:.2f}" width="{width * 0.33:.2f}" height="{height * 0.15:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
+  <rect x="{width * 0.06:.2f}" y="{height * 0.73:.2f}" width="{width * 0.88:.2f}" height="{height * 0.21:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
+
+  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_outer:.2f}" fill="none" stroke="{accent_color}" stroke-width="3.1" />
+  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner:.2f}" fill="none" stroke="#34486a" stroke-width="2.3" />
+  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner * 0.63:.2f}" fill="#0d1832" stroke="#1e2f4a" stroke-width="1.0" opacity="0.95" />
+
   {''.join(sign_lines)}
   {''.join(house_lines)}
   {''.join(sign_labels)}
   {''.join(house_labels)}
-  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner * 0.64:.2f}" fill="#0f172a" stroke="#1e293b" stroke-width="1.2" />
+  {''.join(aspect_lines)}
   {''.join(points)}
   {''.join(point_labels)}
-  <text x="{size * 0.08:.2f}" y="{size * 0.09:.2f}" font-size="34" font-family="Menlo, Consolas, monospace" fill="{accent_color}" font-weight="700">{brand_title}</text>
-  <text x="{size * 0.08:.2f}" y="{size * 0.12:.2f}" font-size="15" font-family="Menlo, Consolas, monospace" fill="#94a3b8">
-    Natal Wheel • {report.sign} • {report.birth.date.isoformat()}
-  </text>
-  {''.join(legend_lines)}
+
+  <text x="{width * 0.06:.2f}" y="{height * 0.08:.2f}" font-size="44" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{brand_title}</text>
+  <text x="{width * 0.06:.2f}" y="{height * 0.11:.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="#8fa2c2">{wheel_title}</text>
+
+  {''.join(planet_rows_svg)}
+  {''.join(aspect_rows_svg)}
+  {''.join(signs_grid_svg)}
 </svg>
 """
 
@@ -170,7 +433,14 @@ def build_natal_wheel_png(
         size=size,
         brand_title=brand_title,
     )
-    return cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=size, output_height=size)
+    width = max(760, int(size))
+    height = int(width * 1.45)
+    return cairosvg.svg2png(
+        bytestring=svg.encode("utf-8"),
+        output_width=width,
+        output_height=height,
+        unsafe=True,
+    )
 
 
 def build_house_overlay_map(report: NatalBirthchartResponse) -> dict[str, Any]:
@@ -183,6 +453,9 @@ def build_house_overlay_map(report: NatalBirthchartResponse) -> dict[str, Any]:
         for idx, cusp in enumerate(cusps):
             house_no = idx + 1
             next_cusp = cusps[(idx + 1) % 12]
+            start = float(cusp % 360.0)
+            end = float(next_cusp % 360.0)
+            arc = (end - start) % 360.0
             occupants = []
             for position in positions:
                 planet_house = position.house or _house_from_cusps(position.longitude, cusps)
@@ -193,8 +466,11 @@ def build_house_overlay_map(report: NatalBirthchartResponse) -> dict[str, Any]:
                     "house": house_no,
                     "cusp_longitude": round(float(cusp), 6),
                     "cusp_sign": signs[idx],
-                    "start_longitude": round(float(cusp % 360.0), 6),
-                    "end_longitude": round(float(next_cusp % 360.0), 6),
+                    "start_longitude": round(start, 6),
+                    "end_longitude": round(end, 6),
+                    "midpoint_longitude": round((start + (arc / 2.0)) % 360.0, 6),
+                    "arc_degrees": round(arc, 6),
+                    "wraps_aries": end < start,
                     "occupants": sorted(occupants),
                 }
             )
@@ -208,6 +484,9 @@ def build_house_overlay_map(report: NatalBirthchartResponse) -> dict[str, Any]:
                     "cusp_sign": sign,
                     "start_longitude": None,
                     "end_longitude": None,
+                    "midpoint_longitude": None,
+                    "arc_degrees": 30.0,
+                    "wraps_aries": False,
                     "occupants": sorted(pos.name for pos in positions if pos.sign == sign),
                 }
             )
@@ -249,7 +528,7 @@ def build_natal_report_pdf(
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import mm
-        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
     except Exception as exc:
         raise RuntimeError("PDF rendering requires reportlab. Install with `pip install reportlab`.") from exc
 
@@ -279,11 +558,12 @@ def build_natal_report_pdf(
     body_style = styles["BodyText"].clone("body")
     body_style.leading = 14
     body_style.spaceAfter = 6
+    body_style.textColor = colors.HexColor("#0f172a")
     small_style = styles["BodyText"].clone("small")
     small_style.fontSize = 9.5
     small_style.textColor = colors.HexColor("#475569")
 
-    story = [
+    story: list[Any] = [
         Paragraph(f"{brand_title} Natal Birthchart Report", title_style),
         Paragraph(
             f"Birth Date: {report.birth.date.isoformat()} • Sun Sign: {report.sign} • "
@@ -294,31 +574,80 @@ def build_natal_report_pdf(
         Spacer(1, 8),
     ]
 
-    planet_rows = [["Planet", "Sign", "House", "Retro"]]
+    try:
+        wheel_png = build_natal_wheel_png(
+            report,
+            accent_color=accent_color,
+            brand_title=brand_title,
+            size=760,
+        )
+        image = Image(BytesIO(wheel_png), width=88 * mm, height=127 * mm)
+        image.hAlign = "CENTER"
+        story.append(image)
+        story.append(Spacer(1, 8))
+    except Exception:
+        # Keep PDF generation resilient even if PNG conversion fails in target env.
+        pass
+
+    planet_rows = [["Sy", "Planet", "Sign", "House", "R"]]
     for position in sorted([p for p in report.snapshot.positions if p.name in PLANET_STYLE], key=lambda x: x.name):
+        planet_symbol = PLANET_TOKEN.get(position.name, position.name[:2].title())
         planet_rows.append(
             [
+                planet_symbol,
                 position.name,
                 position.sign,
                 str(position.house or "-"),
-                "yes" if position.retrograde else "no",
+                "R" if position.retrograde else "-",
             ]
         )
-    planet_table = Table(planet_rows, colWidths=[52 * mm, 32 * mm, 22 * mm, 22 * mm], repeatRows=1)
+    planet_table = Table(planet_rows, colWidths=[12 * mm, 40 * mm, 46 * mm, 20 * mm, 16 * mm], repeatRows=1)
     planet_table.setStyle(
         TableStyle(
             [
                 ("BACKGROUND", (0, 0), (-1, 0), accent),
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (3, 0), (4, -1), "CENTER"),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#94a3b8")),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor("#f8fafc"), colors.white]),
             ]
+            )
         )
-    )
     story.append(Paragraph("Planetary Snapshot", subtitle_style))
     story.append(planet_table)
     story.append(Spacer(1, 10))
+
+    aspect_rows = _major_aspect_rows(report, limit=8)
+    if aspect_rows:
+        story.append(Paragraph("Top Aspect Matrix", subtitle_style))
+        aspect_table_rows = [["Sy", "Aspect", "Bodies", "Orb"]]
+        for row in aspect_rows:
+            symbol = ASPECT_TOKEN.get(row["aspect"], row["aspect"][:3].title())
+            aspect_table_rows.append(
+                [
+                    symbol,
+                    row["aspect"].replace("-", " ").title(),
+                    f"{row['body1']} / {row['body2']}",
+                    f"{row['orb']:.2f}",
+                ]
+            )
+        aspect_table = Table(aspect_table_rows, colWidths=[12 * mm, 36 * mm, 82 * mm, 18 * mm], repeatRows=1)
+        aspect_table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d9e4f5")),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                    ("ALIGN", (3, 0), (3, -1), "RIGHT"),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ]
+            )
+        )
+        story.append(aspect_table)
+        story.append(Spacer(1, 8))
 
     premium = report.premium_insights
     if premium:
@@ -368,21 +697,62 @@ def build_natal_report_pdf(
 
         if premium.timing_overlay and premium.timing_overlay.activations:
             story.append(Paragraph("Timing Overlay (next windows)", subtitle_style))
-            for activation in premium.timing_overlay.activations[:8]:
-                story.append(
-                    Paragraph(
-                        f"{activation.start_date.isoformat()} to {activation.end_date.isoformat()} — "
-                        f"{activation.transit_planet} {activation.aspect} {activation.natal_planet} "
-                        f"(intensity {activation.intensity:.2f})",
-                        body_style,
-                    )
+            timing_rows = [["Window", "Transit", "Intensity"]]
+            for activation in premium.timing_overlay.activations[:6]:
+                timing_rows.append(
+                    [
+                        f"{activation.start_date.isoformat()} to {activation.end_date.isoformat()}",
+                        f"{activation.transit_planet} {activation.aspect} {activation.natal_planet}",
+                        f"{activation.intensity:.2f}",
+                    ]
                 )
-                story.append(Paragraph(activation.summary, small_style))
+            timing_table = Table(timing_rows, colWidths=[66 * mm, 78 * mm, 18 * mm], repeatRows=1)
+            timing_table.setStyle(
+                TableStyle(
+                    [
+                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                    ]
+                )
+            )
+            story.append(timing_table)
 
-    overlay_json = json.dumps(build_house_overlay_map(report), indent=2)
+    overlay = build_house_overlay_map(report)
     story.append(Spacer(1, 8))
-    story.append(Paragraph("House Overlay Map (JSON excerpt)", subtitle_style))
-    story.append(Paragraph(overlay_json[:1800].replace("\n", "<br/>"), small_style))
+    story.append(Paragraph("House Overlay Highlights", subtitle_style))
+    houses = overlay.get("houses", [])
+    ranked = sorted(houses, key=lambda item: (-len(item.get("occupants", [])), item.get("house", 99)))
+    house_rows = [["House", "Sign", "Arc", "Occupants"]]
+    for item in ranked[:8]:
+        house_rows.append(
+            [
+                f"H{item.get('house')}",
+                str(item.get("cusp_sign") or "-"),
+                f"{item.get('arc_degrees', 0):.1f}°",
+                ", ".join(item.get("occupants", [])[:4]) or "-",
+            ]
+        )
+    house_table = Table(house_rows, colWidths=[18 * mm, 30 * mm, 24 * mm, 90 * mm], repeatRows=1)
+    house_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#cbd5e1")),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ]
+        )
+    )
+    story.append(house_table)
+    story.append(Spacer(1, 6))
+    story.append(
+        Paragraph(
+            f"Overlay mode: {overlay.get('house_system') or 'estimated'} • Rising: {overlay.get('rising_sign') or 'N/A'}",
+            small_style,
+        )
+    )
 
     def _paint_brand(canvas, doc_obj) -> None:
         canvas.saveState()

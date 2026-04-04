@@ -1,6 +1,6 @@
 <p align="center">
-  <a href="https://numerologyapi.com">
-    <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1758341353/cover_dne2nf.jpg" alt="OpAstro Banner" />
+  <a href="https://opastro.com">
+    <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1775313441/cover_gh1cdn.jpg" alt="OpAstro Banner" />
   </a>
 </p>
 
@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="https://pypi.org/project/opastro/"><img src="https://img.shields.io/badge/%F0%9F%93%A6%20PyPI-opastro-blue" alt="PyPI Package"></a>
-  <a href="https://numerologyapi.com"><img src="https://img.shields.io/badge/%F0%9F%8C%90%20Website-numerologyapi.com-green" alt="Website"></a>
+  <a href="https://opastro.com"><img src="https://img.shields.io/badge/%F0%9F%8C%90%20Website-numerologyapi.com-green" alt="Website"></a>
   <a href="https://github.com/dakidarts/opastro"><img src="https://img.shields.io/badge/%E2%AD%90%20GitHub-dakidarts%2Fopastro-purple" alt="GitHub Repo"></a>
 </p>
 
