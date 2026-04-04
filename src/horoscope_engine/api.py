@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Header
+from fastapi.responses import Response, JSONResponse
 
 from .cache import cache_from_env
 from .cache_keys import build_cache_key
@@ -19,6 +20,12 @@ from .models import (
     Period,
     PlanetHoroscopeRequest,
     PregenRequest,
+)
+from .natal_artifacts import (
+    build_natal_report_pdf,
+    build_natal_wheel_png,
+    build_natal_wheel_svg,
+    build_house_overlay_map,
 )
 from .observability import MetricsCollector, Timer
 from .pregen import pregenerate
@@ -193,6 +200,16 @@ async def get_natal_birthchart_report(
 ) -> NatalBirthchartResponse:
     timer = Timer()
     tenant = request.tenant_id or x_tenant_id
+    try:
+        response = _get_natal_report(request, tenant)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    metrics.record_request(timer.elapsed_ms())
+    return response
+
+
+def _get_natal_report(request: NatalBirthchartRequest, tenant: str | None) -> NatalBirthchartResponse:
     birth = request.birth
     cache_key = build_cache_key(
         tenant_id=tenant,
@@ -215,18 +232,83 @@ async def get_natal_birthchart_report(
     cached = cache.get(cache_key)
     if cached:
         metrics.record_cache_hit()
-        metrics.record_request(timer.elapsed_ms())
         return NatalBirthchartResponse.model_validate_json(cached)
 
-    try:
-        response = service.generate_natal_birthchart(request)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
+    response = service.generate_natal_birthchart(request)
     cache.set(cache_key, response.model_dump_json())
     metrics.record_cache_miss()
-    metrics.record_request(timer.elapsed_ms())
     return response
+
+
+@app.post("/natal-birthchart/wheel.svg")
+async def get_natal_wheel_svg(
+    request: NatalBirthchartRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> Response:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    try:
+        report = _get_natal_report(request, tenant)
+        svg = build_natal_wheel_svg(report)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    metrics.record_request(timer.elapsed_ms())
+    return Response(content=svg.encode("utf-8"), media_type="image/svg+xml")
+
+
+@app.post("/natal-birthchart/wheel.png")
+async def get_natal_wheel_png(
+    request: NatalBirthchartRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> Response:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    try:
+        report = _get_natal_report(request, tenant)
+        png_bytes = build_natal_wheel_png(report)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    metrics.record_request(timer.elapsed_ms())
+    return Response(content=png_bytes, media_type="image/png")
+
+
+@app.post("/natal-birthchart/house-overlay")
+async def get_natal_house_overlay(
+    request: NatalBirthchartRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> JSONResponse:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    try:
+        report = _get_natal_report(request, tenant)
+        payload = build_house_overlay_map(report)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    metrics.record_request(timer.elapsed_ms())
+    return JSONResponse(content=payload)
+
+
+@app.post("/natal-birthchart/report.pdf")
+async def get_natal_report_pdf(
+    request: NatalBirthchartRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> Response:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    try:
+        report = _get_natal_report(request, tenant)
+        pdf_bytes = build_natal_report_pdf(report)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    metrics.record_request(timer.elapsed_ms())
+    headers = {"Content-Disposition": 'attachment; filename="opastro-natal-report.pdf"'}
+    return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
 
 
 @app.get("/metrics")

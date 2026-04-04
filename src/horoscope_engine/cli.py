@@ -26,11 +26,18 @@ from .models import (
     BirthdayHoroscopeRequest,
     Coordinates,
     HoroscopeRequest,
+    NatalBirthchartRequest,
     Period,
     PlanetHoroscopeRequest,
     PlanetName,
     Section,
     ZODIAC_SIGNS,
+)
+from .natal_artifacts import (
+    build_house_overlay_map,
+    build_natal_report_pdf,
+    build_natal_wheel_png,
+    build_natal_wheel_svg,
 )
 from .profiles import DEFAULT_PROFILE_NAME, ProfileStore
 from .service import HoroscopeService
@@ -61,6 +68,7 @@ COMMAND_ALIASES = {
     "horoscope": ["h"],
     "birthday": ["bday", "b"],
     "planet": ["p"],
+    "natal": ["n"],
     "serve": ["api"],
     "explain": ["x"],
     "completion": ["comp", "completions"],
@@ -128,6 +136,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
               opastro horoscope --period weekly --birth-date 1992-06-15 --birth-time 09:30 --lat 4.0511 --lon 9.7679 --timezone Africa/Douala
               opastro horoscope --period daily --sign ARIES --format markdown --export reports/aries.md
               opastro planet --period monthly --planet mercury --sign TAURUS
+              opastro natal --birth-date 2004-06-14 --birth-time 09:30 --lat 4.0511 --lon 9.7679 --pdf reports/natal.pdf
               opastro serve --host 127.0.0.1 --port 8000 --reload
             """
         ).strip(),
@@ -247,6 +256,15 @@ def _build_base_parser() -> argparse.ArgumentParser:
         help="Planet to focus in the report.",
     )
     planet.set_defaults(handler=_handle_planet)
+
+    natal = subparsers.add_parser(
+        "natal",
+        aliases=COMMAND_ALIASES["natal"],
+        help="Generate natal birthchart insights + visual/download artifacts.",
+        description="Generate natal report JSON/text and optionally export wheel SVG/PNG, house overlay map, and PDF.",
+    )
+    _add_natal_args(natal)
+    natal.set_defaults(handler=_handle_natal)
 
     serve = subparsers.add_parser(
         "serve",
@@ -386,6 +404,28 @@ def _add_common_report_args(parser: argparse.ArgumentParser, *, require_period: 
         "--export",
         help="Optional file path to save rendered output.",
     )
+
+
+def _add_natal_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--birth-date", help="Birth date in ISO format YYYY-MM-DD.")
+    parser.add_argument("--birth-time", help="Birth time in HH:MM format.")
+    parser.add_argument("--lat", type=float, help="Birth latitude for house calculations.")
+    parser.add_argument("--lon", type=float, help="Birth longitude for house calculations.")
+    parser.add_argument("--timezone", help="IANA timezone, e.g. Africa/Douala.")
+    parser.add_argument("--zodiac-system", choices=["sidereal", "tropical"])
+    parser.add_argument("--ayanamsa", choices=["lahiri", "fagan_bradley", "krishnamurti", "raman", "yukteswar"])
+    parser.add_argument("--house-system", choices=["placidus", "whole_sign", "equal", "koch"])
+    parser.add_argument("--node-type", choices=["true", "mean"])
+    parser.add_argument("--tenant-id", help="Tenant identifier.")
+    parser.add_argument("--json", action="store_true", help="Output raw natal JSON.")
+    parser.add_argument("--wheel-svg", help="Export wheel chart as SVG.")
+    parser.add_argument("--wheel-png", help="Export wheel chart as PNG.")
+    parser.add_argument("--house-map", help="Export house overlay map JSON.")
+    parser.add_argument("--pdf", help="Export branded natal PDF report.")
+    parser.add_argument("--brand-title", default="OPASTRO", help="Brand title for exported assets.")
+    parser.add_argument("--brand-url", default="https://opastro.com", help="Brand URL for PDF footer.")
+    parser.add_argument("--premium-url", default="https://numerologyapi.com", help="Premium URL callout in PDF.")
+    parser.add_argument("--accent", default="#3ddd77", help="Hex accent color for visual exports.")
 
 
 def _add_profile_fields(parser: argparse.ArgumentParser) -> None:
@@ -1013,6 +1053,95 @@ def _save_export(content: str, export_path: str) -> Path:
     return target
 
 
+def _build_natal_request(args: argparse.Namespace) -> NatalBirthchartRequest:
+    birth = _build_birth(args)
+    if birth is None:
+        raise ValueError("--birth-date is required for natal reports.")
+    return NatalBirthchartRequest(
+        birth=birth,
+        zodiac_system=args.zodiac_system,
+        ayanamsa=args.ayanamsa,
+        house_system=args.house_system,
+        node_type=args.node_type,
+        tenant_id=args.tenant_id,
+    )
+
+
+def _render_natal_text(report) -> str:
+    lines: list[str] = []
+    lines.append("OPASTRO NATAL REPORT")
+    lines.append("".ljust(min(96, _term_width()), "─"))
+    lines.append(
+        f"Sign: {report.sign} | Birth: {report.birth.date.isoformat()} | "
+        f"Rising: {report.snapshot.rising_sign or 'N/A'} | Houses: {report.snapshot.house_system or 'N/A'}"
+    )
+    lines.append(f"Positions: {len(report.snapshot.positions)} | Aspects: {len(report.snapshot.aspects)}")
+    premium = report.premium_insights
+    if premium:
+        signature = premium.dominant_signature
+        lines.append(
+            "Dominant signature: "
+            f"{signature.dominant_element}/{signature.dominant_modality} "
+            f"(top: {', '.join(signature.top_planets[:3]) or 'N/A'})"
+        )
+        lines.append(
+            f"Aspect patterns: {len(premium.aspect_patterns)} | "
+            f"House vectors: {len(premium.life_area_vectors)} | "
+            f"Timing windows: {len(premium.timing_overlay.activations) if premium.timing_overlay else 0}"
+        )
+        if premium.relationship_module:
+            lines.append(f"Relationship score: {premium.relationship_module.score:.1f}")
+        if premium.career_module:
+            lines.append(f"Career score: {premium.career_module.score:.1f}")
+    lines.append("")
+    lines.append(UPSELL_TEXT)
+    return "\n".join(lines)
+
+
+def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
+    exports: list[Path] = []
+
+    if args.wheel_svg:
+        svg = build_natal_wheel_svg(
+            report,
+            accent_color=args.accent,
+            brand_title=args.brand_title,
+        )
+        target = _save_export(svg, args.wheel_svg)
+        exports.append(target)
+
+    if args.wheel_png:
+        png_bytes = build_natal_wheel_png(
+            report,
+            accent_color=args.accent,
+            brand_title=args.brand_title,
+        )
+        target = Path(args.wheel_png).expanduser()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(png_bytes)
+        exports.append(target)
+
+    if args.house_map:
+        payload = build_house_overlay_map(report)
+        target = _save_export(json.dumps(payload, indent=2), args.house_map)
+        exports.append(target)
+
+    if args.pdf:
+        pdf_bytes = build_natal_report_pdf(
+            report,
+            accent_color=args.accent,
+            brand_title=args.brand_title,
+            brand_url=args.brand_url,
+            premium_url=args.premium_url,
+        )
+        target = Path(args.pdf).expanduser()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(pdf_bytes)
+        exports.append(target)
+
+    return exports
+
+
 def _date_range(start: date, end: date, step_days: int = 1) -> list[date]:
     if step_days <= 0:
         raise ValueError("--step-days must be greater than 0.")
@@ -1293,6 +1422,7 @@ def _show_welcome() -> int:
         ("horoscope", "Generate a standard period report from sign or birth data."),
         ("birthday", "Generate a yearly birthday-cycle report."),
         ("planet", "Generate a planet-focused report for deeper diagnostics."),
+        ("natal", "Generate natal analysis and export wheel/map/pdf assets."),
         ("explain", "Show factor provenance for each section line."),
         ("completion", "Print shell completion scripts for bash/zsh/fish."),
         ("ui", "Launch keyboard-driven interactive report browser."),
@@ -1928,6 +2058,23 @@ def _handle_planet(args: argparse.Namespace) -> int:
         output_format=_resolve_output_format(args),
         export_path=args.export,
     )
+
+
+def _handle_natal(args: argparse.Namespace) -> int:
+    _apply_profile_defaults(args)
+    service = HoroscopeService(ServiceConfig())
+    request = _build_natal_request(args)
+    report = service.generate_natal_birthchart(request)
+
+    if args.json:
+        print(report.model_dump_json(indent=2))
+    else:
+        print(_render_natal_text(report))
+
+    exports = _export_natal_assets(report, args)
+    for target in exports:
+        print(f"saved output to {target}", file=sys.stderr)
+    return 0
 
 
 def _handle_serve(args: argparse.Namespace) -> int:

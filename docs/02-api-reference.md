@@ -11,6 +11,10 @@ Base URL (local): `http://127.0.0.1:8000`
 | `POST` | `/birthday-horoscope` | Birthday-cycle yearly report |
 | `POST` | `/planet-horoscope` | Planet-focused report |
 | `POST` | `/natal-birthchart` | Natal chart snapshot + sign derivation report |
+| `POST` | `/natal-birthchart/wheel.svg` | Render natal wheel as SVG |
+| `POST` | `/natal-birthchart/wheel.png` | Render natal wheel as PNG |
+| `POST` | `/natal-birthchart/house-overlay` | Return natal house overlay JSON map |
+| `POST` | `/natal-birthchart/report.pdf` | Download branded natal PDF report |
 | `GET` | `/metrics` | Request/cache metrics snapshot |
 | `POST` | `/admin/pregenerate` | Cache pre-generation utility |
 
@@ -110,6 +114,19 @@ Notes:
   - house rulership intelligence + life-area vectors,
   - deterministic transit timing overlay windows,
   - relationship and career premium modules.
+
+## Natal Asset Endpoints
+
+All natal asset endpoints accept the same request body as `POST /natal-birthchart`.
+
+- `POST /natal-birthchart/wheel.svg`  
+  Returns `image/svg+xml` wheel chart output.
+- `POST /natal-birthchart/wheel.png`  
+  Returns `image/png` wheel chart output.
+- `POST /natal-birthchart/house-overlay`  
+  Returns JSON house overlay map with house spans, occupants, and life-area vectors.
+- `POST /natal-birthchart/report.pdf`  
+  Returns `application/pdf` with branded sectioned natal summary.
 
 ## Headers
 

@@ -103,6 +103,7 @@ opastro
 | `opastro horoscope` | Generate standard reports (daily/weekly/monthly/yearly) |
 | `opastro birthday` | Generate birthday-cycle yearly report |
 | `opastro planet` | Generate planet-focused report |
+| `opastro natal` | Generate natal report + wheel chart assets (SVG/PNG/map/PDF) |
 | `opastro explain` | Show why each section line appeared (factor provenance) |
 | `opastro completion --shell ...` | Generate shell completion scripts |
 | `opastro ui` | Launch interactive TUI with section drill-down |
@@ -168,6 +169,18 @@ opastro birthday --sign TAURUS --target-date 2026-04-03
 # Planet-focused monthly report
 opastro planet --period monthly --planet mercury --sign TAURUS --target-date 2026-04-03
 
+# Natal report + premium artifact exports
+opastro natal \
+  --birth-date 2004-06-14 \
+  --birth-time 09:30 \
+  --lat 4.0511 \
+  --lon 9.7679 \
+  --timezone Africa/Douala \
+  --wheel-svg reports/natal-wheel.svg \
+  --wheel-png reports/natal-wheel.png \
+  --house-map reports/natal-house-map.json \
+  --pdf reports/natal-report.pdf
+
 # Raw JSON output
 opastro horoscope --period weekly --sign LEO --json
 
@@ -196,6 +209,10 @@ uvicorn horoscope_engine.main:app --host 127.0.0.1 --port 8000 --reload
 - `POST /birthday-horoscope`
 - `POST /planet-horoscope`
 - `POST /natal-birthchart`
+- `POST /natal-birthchart/wheel.svg`
+- `POST /natal-birthchart/wheel.png`
+- `POST /natal-birthchart/house-overlay`
+- `POST /natal-birthchart/report.pdf`
 - `GET /metrics`
 - `POST /admin/pregenerate`
 

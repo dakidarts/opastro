@@ -161,6 +161,18 @@ Fields:
 - `cautions[]`
 - `actions[]`
 
+## Natal Asset Contracts
+
+These endpoints reuse `NatalBirthchartRequest`:
+- `POST /natal-birthchart/wheel.svg` -> `image/svg+xml`
+- `POST /natal-birthchart/wheel.png` -> `image/png`
+- `POST /natal-birthchart/house-overlay` -> JSON map:
+  - `report_type`, `sign`, `birth_date`
+  - `house_system`, `rising_sign`
+  - `houses[]` (`house`, `cusp_longitude`, `cusp_sign`, `start_longitude`, `end_longitude`, `occupants[]`)
+  - `life_area_vectors[]` (`area`, `score`, `emphasis`, `drivers[]`)
+- `POST /natal-birthchart/report.pdf` -> `application/pdf`
+
 ## `data` (`PeriodCelestialData`)
 - `period`, `start`, `end`
 - `snapshot` (`ChartSnapshot`)
