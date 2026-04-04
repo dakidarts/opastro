@@ -2625,6 +2625,16 @@ def main(argv: Optional[list[str]] = None) -> int:
     if not raw_argv:
         return _show_welcome()
 
+    # UX shorthand: allow `opastro logger --limit 5` to behave like
+    # `opastro logger show --limit 5` while preserving `logger --help`.
+    if (
+        len(raw_argv) >= 2
+        and raw_argv[0] in {"logger", *COMMAND_ALIASES.get("logger", [])}
+        and raw_argv[1].startswith("-")
+        and raw_argv[1] not in {"-h", "--help"}
+    ):
+        raw_argv = [raw_argv[0], "show", *raw_argv[1:]]
+
     first = raw_argv[0]
     if not first.startswith("-") and first not in _known_command_tokens():
         print(_suggest_command(first), file=sys.stderr)

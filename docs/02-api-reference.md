@@ -44,7 +44,7 @@ Default zodiac mode is `tropical` when `zodiac_system` is omitted.
 ```json
 {
   "birth": {
-    "date": "1992-06-15",
+    "date": "1997-06-17",
     "time": "09:30",
     "coordinates": {"latitude": 4.0511, "longitude": 9.7679},
     "timezone": "Africa/Douala"
@@ -94,7 +94,7 @@ Notes:
 {
   "user_name": "Dakidarts",
   "birth": {
-    "date": "2004-06-14",
+    "date": "1997-08-14",
     "time": "09:30",
     "coordinates": {"latitude": 4.0511, "longitude": 9.7679},
     "timezone": "Africa/Douala"
