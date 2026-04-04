@@ -64,6 +64,11 @@ COMMAND_ALIASES = {
     "batch": ["gen"],
 }
 
+ACCENT_RGB = (61, 221, 119)  # #3ddd77
+COLOR_ACCENT = f"38;2;{ACCENT_RGB[0]};{ACCENT_RGB[1]};{ACCENT_RGB[2]}"
+COLOR_ACCENT_BOLD = f"1;{COLOR_ACCENT}"
+COLOR_ACCENT_DIM = f"2;{COLOR_ACCENT}"
+
 
 class OpastroArgumentParser(argparse.ArgumentParser):
     def format_help(self) -> str:
@@ -537,7 +542,7 @@ def _render_line_table(
         f"{chars['bm']}{chars['h'] * (right_width + pad * 2)}{chars['br']}"
     )
 
-    lines: list[str] = [_style(top, "2;34")]
+    lines: list[str] = [_style(top, COLOR_ACCENT_DIM)]
 
     def _emit_row(left: str, right: str, *, tone: Optional[str] = None) -> None:
         left_lines = _cell_wrap(left, left_width)
@@ -552,11 +557,11 @@ def _render_line_table(
             )
             lines.append(_style(row_line, tone) if tone else row_line)
 
-    _emit_row(headers[0], headers[1], tone="1;36")
-    lines.append(_style(mid, "2;34"))
+    _emit_row(headers[0], headers[1], tone=COLOR_ACCENT_BOLD)
+    lines.append(_style(mid, COLOR_ACCENT_DIM))
     for left, right in rows:
         _emit_row(left, right)
-    lines.append(_style(bottom, "2;34"))
+    lines.append(_style(bottom, COLOR_ACCENT_DIM))
     return "\n".join(lines)
 
 
@@ -670,15 +675,15 @@ def _render_themed_help(parser: argparse.ArgumentParser) -> str:
     table_width = _term_width()
     compact = table_width <= 84
     tight = table_width <= 74
-    lines.append(_style("OPASTRO HELP", "1;34"))
-    lines.append(_style(f"{parser.prog}", "1;36"))
+    lines.append(_style("OPASTRO HELP", COLOR_ACCENT_BOLD))
+    lines.append(_style(f"{parser.prog}", COLOR_ACCENT_BOLD))
 
     if parser.description:
         lines.append(_wrap(parser.description))
 
     usage_rows = [("Syntax", _usage_value(parser))]
     lines.append("")
-    lines.append(_style("Usage", "1;33"))
+    lines.append(_style("Usage", COLOR_ACCENT_BOLD))
     lines.append(
         _render_line_table(
             usage_rows,
@@ -692,7 +697,7 @@ def _render_themed_help(parser: argparse.ArgumentParser) -> str:
     command_rows = _collect_subcommand_rows(parser)
     if command_rows:
         lines.append("")
-        lines.append(_style("Commands", "1;33"))
+        lines.append(_style("Commands", COLOR_ACCENT_BOLD))
         lines.append(
             _render_line_table(
                 command_rows,
@@ -706,7 +711,7 @@ def _render_themed_help(parser: argparse.ArgumentParser) -> str:
     argument_rows = _collect_argument_rows(parser)
     if argument_rows:
         lines.append("")
-        lines.append(_style("Arguments", "1;33"))
+        lines.append(_style("Arguments", COLOR_ACCENT_BOLD))
         lines.append(
             _render_line_table(
                 argument_rows,
@@ -720,7 +725,7 @@ def _render_themed_help(parser: argparse.ArgumentParser) -> str:
     option_rows = _collect_option_rows(parser)
     if option_rows:
         lines.append("")
-        lines.append(_style("Options", "1;33"))
+        lines.append(_style("Options", COLOR_ACCENT_BOLD))
         lines.append(
             _render_line_table(
                 option_rows,
@@ -734,7 +739,7 @@ def _render_themed_help(parser: argparse.ArgumentParser) -> str:
     example_rows = _collect_example_rows(parser.epilog)
     if example_rows:
         lines.append("")
-        lines.append(_style("Examples", "1;33"))
+        lines.append(_style("Examples", COLOR_ACCENT_BOLD))
         lines.append(
             _render_line_table(
                 example_rows,
@@ -746,16 +751,16 @@ def _render_themed_help(parser: argparse.ArgumentParser) -> str:
         )
 
     lines.append("")
-    lines.append(_style(UPSELL_TEXT, "1;35"))
+    lines.append(_style(UPSELL_TEXT, COLOR_ACCENT_BOLD))
     return "\n".join(lines).rstrip() + "\n"
 
 
 def _print_heading(label: str) -> None:
-    print(_style(label, "1;36"))
+    print(_style(label, COLOR_ACCENT_BOLD))
 
 
 def _print_divider(char: str = "─") -> None:
-    print(_style(char * _term_width(), "2"))
+    print(_style(char * _term_width(), COLOR_ACCENT_DIM))
 
 
 def _render_pretty_report(payload) -> int:
@@ -792,7 +797,7 @@ def _render_pretty_report(payload) -> int:
                 print(_wrap_bullet(item))
         _print_divider("·")
 
-    print(_style(UPSELL_TEXT, "1;35"))
+    print(_style(UPSELL_TEXT, COLOR_ACCENT_BOLD))
     return 0
 
 
@@ -1270,8 +1275,8 @@ def _render_explain_output(explain_payload: dict[str, Any], *, output_format: st
 
 
 def _show_welcome() -> int:
-    print(_style(WELCOME_BANNER.strip("\n"), "1;34"))
-    print(_style("OPASTRO • Open Core Horoscope Engine", "1;36"))
+    print(_style(WELCOME_BANNER.strip("\n"), COLOR_ACCENT_BOLD))
+    print(_style("OPASTRO • Open Core Horoscope Engine", COLOR_ACCENT_BOLD))
     print(_wrap("Enterprise-grade deterministic calculations with lightweight open meanings and premium-ready API hooks."))
     _print_divider()
     _print_heading("Commands")
@@ -1298,7 +1303,7 @@ def _show_welcome() -> int:
     print(_wrap("opastro horoscope --period daily --sign ARIES --target-date 2026-04-03", indent="  "))
     print(_wrap("opastro --help", indent="  "))
     _print_divider()
-    print(_style(UPSELL_TEXT, "1;35"))
+    print(_style(UPSELL_TEXT, COLOR_ACCENT_BOLD))
     return 0
 
 
