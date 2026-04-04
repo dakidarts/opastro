@@ -21,6 +21,7 @@ python3 -m pip install -e .
 ## First CLI Run
 
 ```bash
+opastro --version
 opastro
 ```
 
@@ -89,6 +90,22 @@ opastro ui --period daily --sign ARIES --target-date 2026-04-03
 
 ```bash
 opastro batch --kind horoscope --period daily --signs ARIES,TAURUS --date-from 2026-04-03 --date-to 2026-04-05 --format markdown --export-dir reports/batch
+```
+
+### Natal exports (day/night wheel theme)
+
+```bash
+opastro natal \
+  --user-name "Dakidarts" \
+  --birth-date 2004-06-14 \
+  --birth-time 09:30 \
+  --lat 4.0511 \
+  --lon 9.7679 \
+  --timezone Africa/Douala \
+  --wheel-theme day \
+  --wheel-svg reports/natal-wheel.svg \
+  --wheel-png reports/natal-wheel.png \
+  --pdf reports/natal-report.pdf
 ```
 
 ## Run API

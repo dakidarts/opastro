@@ -166,8 +166,8 @@ Fields:
 ## Natal Asset Contracts
 
 These endpoints reuse `NatalBirthchartRequest`:
-- `POST /natal-birthchart/wheel.svg` -> `image/svg+xml`
-- `POST /natal-birthchart/wheel.png` -> `image/png`
+- `POST /natal-birthchart/wheel.svg` -> `image/svg+xml` (optional query: `theme=night|day`)
+- `POST /natal-birthchart/wheel.png` -> `image/png` (optional query: `theme=night|day`)
 - `POST /natal-birthchart/house-overlay` -> JSON map:
 - `report_type`, `sign`, `birth_date`, `user_name`
 - `sign_polarity`, `element_percentages` (`fire`, `earth`, `air`, `water`)
@@ -175,7 +175,7 @@ These endpoints reuse `NatalBirthchartRequest`:
 - `house_system`, `rising_sign`
 - `houses[]` (`house`, `cusp_longitude`, `cusp_sign`, `start_longitude`, `end_longitude`, `midpoint_longitude`, `arc_degrees`, `wraps_aries`, `occupants[]`)
 - `life_area_vectors[]` (`area`, `score`, `emphasis`, `drivers[]`)
-- `POST /natal-birthchart/report.pdf` -> `application/pdf`
+- `POST /natal-birthchart/report.pdf` -> `application/pdf` (optional query: `theme=night|day`)
 
 ## `data` (`PeriodCelestialData`)
 - `period`, `start`, `end`

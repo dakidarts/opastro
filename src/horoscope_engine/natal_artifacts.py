@@ -107,6 +107,34 @@ ASPECT_PRIORITY = {
     "quincunx": 5,
 }
 MASCULINE_SIGNS = {"ARIES", "GEMINI", "LEO", "LIBRA", "SAGITTARIUS", "AQUARIUS"}
+WHEEL_THEME_PALETTES = {
+    "night": {
+        "bg_0": "#0b1730",
+        "bg_1": "#101d38",
+        "bg_2": "#0a1326",
+        "panel_fill": "#0c1730",
+        "panel_opacity": 0.78,
+        "sign_line": "#2b3f63",
+        "ring_inner": "#34486a",
+        "center_fill": "#0d1832",
+        "center_stroke": "#1e2f4a",
+        "divider": "#2a3f64",
+        "subtitle": "#8fa2c2",
+    },
+    "day": {
+        "bg_0": "#1a5f45",
+        "bg_1": "#154f3a",
+        "bg_2": "#0f3527",
+        "panel_fill": "#132a22",
+        "panel_opacity": 0.74,
+        "sign_line": "#3f6f58",
+        "ring_inner": "#4f8069",
+        "center_fill": "#153426",
+        "center_stroke": "#2f5f4a",
+        "divider": "#3f6f58",
+        "subtitle": "#b5d6c4",
+    },
+}
 
 
 def _symbol(codepoint: Optional[int], fallback: str = "?") -> str:
@@ -257,6 +285,13 @@ def _degree_in_sign(longitude: Optional[float]) -> Optional[float]:
     return round(float(longitude) % 30.0, 2)
 
 
+def _resolve_wheel_theme(theme: Optional[str]) -> str:
+    normalized = (theme or "night").strip().lower()
+    if normalized not in WHEEL_THEME_PALETTES:
+        return "night"
+    return normalized
+
+
 def build_natal_wheel_svg(
     report: NatalBirthchartResponse,
     *,
@@ -264,13 +299,16 @@ def build_natal_wheel_svg(
     size: int = 1080,
     brand_title: str = "OPASTRO",
     user_name: Optional[str] = None,
+    theme: str = "night",
 ) -> str:
+    wheel_theme = _resolve_wheel_theme(theme)
+    palette = WHEEL_THEME_PALETTES[wheel_theme]
     width = max(760, int(size))
     top_margin = width * 0.07
     cx = width * 0.34
     ring_outer = width * 0.25
     ring_inner = width * 0.17
-    cy = top_margin + ring_outer + (width * 0.06)
+    cy = top_margin + ring_outer + (width * 0.11)
     planet_radius = width * 0.145
     sign_symbol_radius = width * 0.225
     sign_name_radius = width * 0.205
@@ -284,7 +322,7 @@ def build_natal_wheel_svg(
         x2, y2 = _polar_xy(cx, cy, ring_outer, start_lon)
         sign_lines.append(
             f'<line x1="{x1:.2f}" y1="{y1:.2f}" x2="{x2:.2f}" y2="{y2:.2f}" '
-            'stroke="#2b3f63" stroke-width="1.7" opacity="0.90" />'
+            f'stroke="{palette["sign_line"]}" stroke-width="1.7" opacity="0.90" />'
         )
 
         mid_lon = start_lon + 15.0
@@ -556,7 +594,7 @@ def build_natal_wheel_svg(
     signs_rows_start_y = signs_title_y + 30.0
     divider_y = signs_section_top - (legend_divider_gap * 0.5)
     signs_grid_svg.append(
-        f'<line x1="{legend_card_x + 14:.2f}" y1="{divider_y:.2f}" x2="{legend_card_x + legend_card_w - 14:.2f}" y2="{divider_y:.2f}" stroke="#2a3f64" stroke-width="1.1" opacity="0.9" />'
+        f'<line x1="{legend_card_x + 14:.2f}" y1="{divider_y:.2f}" x2="{legend_card_x + legend_card_w - 14:.2f}" y2="{divider_y:.2f}" stroke="{palette["divider"]}" stroke-width="1.1" opacity="0.9" />'
     )
     signs_grid_svg.append(
         f'<text x="{legend_card_x + 16:.2f}" y="{signs_title_y:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
@@ -577,9 +615,9 @@ def build_natal_wheel_svg(
     background = (
         '<defs>'
         '<radialGradient id="wheelBg" cx="30%" cy="18%" r="88%">'
-        '<stop offset="0%" stop-color="#0b1730" />'
-        '<stop offset="55%" stop-color="#101d38" />'
-        '<stop offset="100%" stop-color="#0a1326" />'
+        f'<stop offset="0%" stop-color="{palette["bg_0"]}" />'
+        f'<stop offset="55%" stop-color="{palette["bg_1"]}" />'
+        f'<stop offset="100%" stop-color="{palette["bg_2"]}" />'
         "</radialGradient>"
         "</defs>"
     )
@@ -590,12 +628,12 @@ def build_natal_wheel_svg(
   {background}
   <rect x="0" y="0" width="{width}" height="{height}" fill="url(#wheelBg)" />
 
-  <rect x="{planet_card_x:.2f}" y="{planet_card_y:.2f}" width="{planet_card_w:.2f}" height="{planet_card_h:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
-  <rect x="{legend_card_x:.2f}" y="{legend_card_y:.2f}" width="{legend_card_w:.2f}" height="{legend_card_h:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
+  <rect x="{planet_card_x:.2f}" y="{planet_card_y:.2f}" width="{planet_card_w:.2f}" height="{planet_card_h:.2f}" rx="14" fill="{palette["panel_fill"]}" opacity="{palette["panel_opacity"]:.2f}" />
+  <rect x="{legend_card_x:.2f}" y="{legend_card_y:.2f}" width="{legend_card_w:.2f}" height="{legend_card_h:.2f}" rx="14" fill="{palette["panel_fill"]}" opacity="{palette["panel_opacity"]:.2f}" />
 
   <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_outer:.2f}" fill="none" stroke="{accent_color}" stroke-width="3.1" />
-  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner:.2f}" fill="none" stroke="#34486a" stroke-width="2.3" />
-  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner * 0.63:.2f}" fill="#0d1832" stroke="#1e2f4a" stroke-width="1.0" opacity="0.95" />
+  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner:.2f}" fill="none" stroke="{palette["ring_inner"]}" stroke-width="2.3" />
+  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner * 0.63:.2f}" fill="{palette["center_fill"]}" stroke="{palette["center_stroke"]}" stroke-width="1.0" opacity="0.95" />
 
   {''.join(sign_lines)}
   {''.join(house_lines)}
@@ -607,7 +645,7 @@ def build_natal_wheel_svg(
   {''.join(angle_marks)}
 
   <text x="{width * 0.06:.2f}" y="{(top_margin + 18):.2f}" font-size="44" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{display_name}</text>
-  <text x="{width * 0.06:.2f}" y="{(top_margin + 44):.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="#8fa2c2">{wheel_title}</text>
+  <text x="{width * 0.06:.2f}" y="{(top_margin + 44):.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="{palette["subtitle"]}">{wheel_title}</text>
 
   {''.join(planet_rows_svg)}
   {''.join(aspect_rows_svg)}
@@ -623,6 +661,7 @@ def build_natal_wheel_png(
     size: int = 1080,
     brand_title: str = "OPASTRO",
     user_name: Optional[str] = None,
+    theme: str = "night",
 ) -> bytes:
     try:
         import cairosvg
@@ -634,6 +673,7 @@ def build_natal_wheel_png(
         size=size,
         brand_title=brand_title,
         user_name=user_name,
+        theme=theme,
     )
     width = max(760, int(size))
     height = int(width * 1.2)
@@ -737,6 +777,7 @@ def build_natal_report_pdf(
     accent_color: str = ACCENT_DEFAULT,
     brand_title: str = "OPASTRO",
     user_name: Optional[str] = None,
+    wheel_theme: str = "night",
     brand_url: str = "https://opastro.com",
     premium_url: str = "https://numerologyapi.com",
 ) -> bytes:
@@ -797,6 +838,7 @@ def build_natal_report_pdf(
             accent_color=accent_color,
             brand_title=brand_title,
             user_name=user_name,
+            theme=wheel_theme,
             size=760,
         )
         image = Image(BytesIO(wheel_png), width=88 * mm, height=127 * mm)

@@ -7,6 +7,7 @@ from datetime import date, datetime
 import difflib
 from html import escape as html_escape
 import importlib
+from importlib import metadata as importlib_metadata
 from io import StringIO
 import json
 import os
@@ -77,14 +78,26 @@ COMMAND_ALIASES = {
 }
 
 ACCENT_RGB = (61, 221, 119)  # #3ddd77
+ACCENT_SOFT_RGB = (126, 236, 165)
+ACCENT_FADE_RGB = (97, 197, 132)
+ACCENT_DEEP_RGB = (37, 156, 85)
 COLOR_ACCENT = f"38;2;{ACCENT_RGB[0]};{ACCENT_RGB[1]};{ACCENT_RGB[2]}"
 COLOR_ACCENT_BOLD = f"1;{COLOR_ACCENT}"
-COLOR_ACCENT_DIM = f"2;{COLOR_ACCENT}"
+COLOR_ACCENT_DIM = f"38;2;{ACCENT_FADE_RGB[0]};{ACCENT_FADE_RGB[1]};{ACCENT_FADE_RGB[2]}"
+COLOR_ACCENT_SOFT = f"38;2;{ACCENT_SOFT_RGB[0]};{ACCENT_SOFT_RGB[1]};{ACCENT_SOFT_RGB[2]}"
+COLOR_ACCENT_DEEP = f"38;2;{ACCENT_DEEP_RGB[0]};{ACCENT_DEEP_RGB[1]};{ACCENT_DEEP_RGB[2]}"
 
 
 class OpastroArgumentParser(argparse.ArgumentParser):
     def format_help(self) -> str:
         return _render_themed_help(self)
+
+
+def _app_version() -> str:
+    try:
+        return importlib_metadata.version("opastro")
+    except importlib_metadata.PackageNotFoundError:
+        return "dev"
 
 
 def _parse_date(raw: str) -> date:
@@ -140,6 +153,13 @@ def _build_base_parser() -> argparse.ArgumentParser:
               opastro serve --host 127.0.0.1 --port 8000 --reload
             """
         ).strip(),
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"opastro {_app_version()}",
+        help="Show installed Opastro version and exit.",
     )
     subparsers = parser.add_subparsers(dest="command", parser_class=OpastroArgumentParser)
 
@@ -427,6 +447,12 @@ def _add_natal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--brand-url", default="https://opastro.com", help="Brand URL for PDF footer.")
     parser.add_argument("--premium-url", default="https://numerologyapi.com", help="Premium URL callout in PDF.")
     parser.add_argument("--accent", default="#3ddd77", help="Hex accent color for visual exports.")
+    parser.add_argument(
+        "--wheel-theme",
+        choices=["night", "day"],
+        default="night",
+        help="Wheel color theme for SVG/PNG/PDF exports.",
+    )
 
 
 def _add_profile_fields(parser: argparse.ArgumentParser) -> None:
@@ -482,6 +508,28 @@ def _style(text: str, code: str, *, colorize: bool = True) -> str:
     if not colorize or not sys.stdout.isatty() or os.getenv("NO_COLOR"):
         return text
     return f"\033[{code}m{text}\033[0m"
+
+
+def _style_rgb(text: str, rgb: tuple[int, int, int], *, bold: bool = False) -> str:
+    code = f"38;2;{rgb[0]};{rgb[1]};{rgb[2]}"
+    if bold:
+        code = f"1;{code}"
+    return _style(text, code)
+
+
+def _gradient_lines(block: str, colors: list[tuple[int, int, int]], *, bold: bool = False) -> str:
+    lines = block.splitlines()
+    if not lines:
+        return block
+    if len(colors) == 1:
+        return "\n".join(_style_rgb(line, colors[0], bold=bold) for line in lines)
+    rendered: list[str] = []
+    steps = max(1, len(lines) - 1)
+    for idx, line in enumerate(lines):
+        color_idx = int(round((idx / steps) * (len(colors) - 1)))
+        color_idx = max(0, min(color_idx, len(colors) - 1))
+        rendered.append(_style_rgb(line, colors[color_idx], bold=bold))
+    return "\n".join(rendered)
 
 
 def _term_width() -> int:
@@ -721,8 +769,8 @@ def _render_themed_help(parser: argparse.ArgumentParser) -> str:
     table_width = _term_width()
     compact = table_width <= 84
     tight = table_width <= 74
-    lines.append(_style("OPASTRO HELP", COLOR_ACCENT_BOLD))
-    lines.append(_style(f"{parser.prog}", COLOR_ACCENT_BOLD))
+    lines.append(_gradient_lines("OPASTRO HELP", [ACCENT_SOFT_RGB, ACCENT_RGB, ACCENT_DEEP_RGB], bold=True))
+    lines.append(_style(f"{parser.prog}", COLOR_ACCENT_SOFT))
 
     if parser.description:
         lines.append(_wrap(parser.description))
@@ -797,7 +845,7 @@ def _render_themed_help(parser: argparse.ArgumentParser) -> str:
         )
 
     lines.append("")
-    lines.append(_style(UPSELL_TEXT, COLOR_ACCENT_BOLD))
+    lines.append(_gradient_lines(UPSELL_TEXT, [ACCENT_SOFT_RGB, ACCENT_RGB], bold=True))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -1110,6 +1158,7 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
             accent_color=args.accent,
             brand_title=args.brand_title,
             user_name=getattr(args, "user_name", None),
+            theme=args.wheel_theme,
         )
         target = _save_export(svg, args.wheel_svg)
         exports.append(target)
@@ -1120,6 +1169,7 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
             accent_color=args.accent,
             brand_title=args.brand_title,
             user_name=getattr(args, "user_name", None),
+            theme=args.wheel_theme,
         )
         target = Path(args.wheel_png).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1139,6 +1189,7 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
             user_name=getattr(args, "user_name", None),
             brand_url=args.brand_url,
             premium_url=args.premium_url,
+            wheel_theme=args.wheel_theme,
         )
         target = Path(args.pdf).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1414,8 +1465,8 @@ def _render_explain_output(explain_payload: dict[str, Any], *, output_format: st
 
 
 def _show_welcome() -> int:
-    print(_style(WELCOME_BANNER.strip("\n"), COLOR_ACCENT_BOLD))
-    print(_style("OPASTRO • Open Core Horoscope Engine", COLOR_ACCENT_BOLD))
+    print(_gradient_lines(WELCOME_BANNER.strip("\n"), [ACCENT_SOFT_RGB, ACCENT_RGB, ACCENT_DEEP_RGB], bold=True))
+    print(_style(f"OPASTRO • Open Core Horoscope Engine • {_app_version()}", COLOR_ACCENT_BOLD))
     print(_wrap("Enterprise-grade deterministic calculations with lightweight open meanings and premium-ready API hooks."))
     _print_divider()
     _print_heading("Commands")
@@ -1443,7 +1494,7 @@ def _show_welcome() -> int:
     print(_wrap("opastro horoscope --period daily --sign ARIES --target-date 2026-04-03", indent="  "))
     print(_wrap("opastro --help", indent="  "))
     _print_divider()
-    print(_style(UPSELL_TEXT, COLOR_ACCENT_BOLD))
+    print(_gradient_lines(UPSELL_TEXT, [ACCENT_SOFT_RGB, ACCENT_RGB], bold=True))
     return 0
 
 

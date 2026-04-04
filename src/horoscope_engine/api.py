@@ -3,8 +3,9 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from importlib import metadata as importlib_metadata
 
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.responses import Response, JSONResponse
 
 from .cache import cache_from_env
@@ -32,7 +33,12 @@ from .pregen import pregenerate
 from .service import HoroscopeService
 
 
-app = FastAPI(title="NumerologyAPI Horoscope Engine", version="0.1.0")
+try:
+    _APP_VERSION = importlib_metadata.version("opastro")
+except importlib_metadata.PackageNotFoundError:
+    _APP_VERSION = "dev"
+
+app = FastAPI(title="NumerologyAPI Horoscope Engine", version=_APP_VERSION)
 logger = logging.getLogger(__name__)
 
 service_config = ServiceConfig()
@@ -244,13 +250,14 @@ def _get_natal_report(request: NatalBirthchartRequest, tenant: str | None) -> Na
 @app.post("/natal-birthchart/wheel.svg")
 async def get_natal_wheel_svg(
     request: NatalBirthchartRequest,
+    theme: str = Query(default="night", pattern="^(night|day)$"),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> Response:
     timer = Timer()
     tenant = request.tenant_id or x_tenant_id
     try:
         report = _get_natal_report(request, tenant)
-        svg = build_natal_wheel_svg(report)
+        svg = build_natal_wheel_svg(report, theme=theme)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -262,13 +269,14 @@ async def get_natal_wheel_svg(
 @app.post("/natal-birthchart/wheel.png")
 async def get_natal_wheel_png(
     request: NatalBirthchartRequest,
+    theme: str = Query(default="night", pattern="^(night|day)$"),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> Response:
     timer = Timer()
     tenant = request.tenant_id or x_tenant_id
     try:
         report = _get_natal_report(request, tenant)
-        png_bytes = build_natal_wheel_png(report)
+        png_bytes = build_natal_wheel_png(report, theme=theme)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -296,13 +304,14 @@ async def get_natal_house_overlay(
 @app.post("/natal-birthchart/report.pdf")
 async def get_natal_report_pdf(
     request: NatalBirthchartRequest,
+    theme: str = Query(default="night", pattern="^(night|day)$"),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> Response:
     timer = Timer()
     tenant = request.tenant_id or x_tenant_id
     try:
         report = _get_natal_report(request, tenant)
-        pdf_bytes = build_natal_report_pdf(report)
+        pdf_bytes = build_natal_report_pdf(report, wheel_theme=theme)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

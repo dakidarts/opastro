@@ -25,6 +25,7 @@ Richer premium narrative packs are available via [numerologyapi.com](https://num
 
 ```bash
 python3 -m pip install -U opastro
+opastro --version
 opastro doctor
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
 ```
@@ -125,6 +126,7 @@ opastro
 - `--house-system {placidus,whole_sign,equal,koch}`
 - `--node-type {true,mean}`
 - `--tenant-id <id>`
+- `--wheel-theme {night,day}` (for natal SVG/PNG/PDF wheel styling)
 - `--json`
 - `--format {text,json,markdown,html}`
 - `--export <path>`
@@ -220,6 +222,8 @@ uvicorn horoscope_engine.main:app --host 127.0.0.1 --port 8000 --reload
 - `POST /natal-birthchart/report.pdf`
 - `GET /metrics`
 - `POST /admin/pregenerate`
+
+Natal wheel/PDF assets support optional query parameter `theme=night|day`.
 
 ### Minimal API Call
 

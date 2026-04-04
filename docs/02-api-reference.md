@@ -123,12 +123,15 @@ All natal asset endpoints accept the same request body as `POST /natal-birthchar
 
 - `POST /natal-birthchart/wheel.svg`  
   Returns `image/svg+xml` wheel chart output with profile context metadata and responsive legend sections.
+  Optional query: `theme=night|day`.
 - `POST /natal-birthchart/wheel.png`  
   Returns `image/png` wheel chart output with profile context metadata and responsive legend sections.
+  Optional query: `theme=night|day`.
 - `POST /natal-birthchart/house-overlay`  
   Returns JSON house overlay map with house spans, occupants, life-area vectors, sign polarity/element percentages, and ASC/MC angle data.
 - `POST /natal-birthchart/report.pdf`  
   Returns `application/pdf` with branded sectioned natal summary.
+  Optional query: `theme=night|day` (affects embedded wheel rendering).
 
 ## Headers
 
