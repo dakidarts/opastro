@@ -441,14 +441,14 @@ def _add_natal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--wheel-png", help="Export wheel chart as PNG.")
     parser.add_argument("--house-map", help="Export house overlay map JSON.")
     parser.add_argument("--pdf", help="Export branded natal PDF report.")
-    parser.add_argument("--brand-title", default="OPASTRO", help="Brand title for exported assets.")
-    parser.add_argument("--brand-url", default="https://opastro.com", help="Brand URL for PDF footer.")
-    parser.add_argument("--premium-url", default="https://numerologyapi.com", help="Premium URL callout in PDF.")
-    parser.add_argument("--accent", default="#3ddd77", help="Hex accent color for visual exports.")
+    parser.add_argument("--brand-title", default=None, help="Brand title for exported assets.")
+    parser.add_argument("--brand-url", default=None, help="Brand URL for PDF footer.")
+    parser.add_argument("--premium-url", default=None, help="Premium URL callout in PDF.")
+    parser.add_argument("--accent", default=None, help="Hex accent color for visual exports.")
     parser.add_argument(
         "--wheel-theme",
         choices=["night", "day"],
-        default="night",
+        default=None,
         help="Wheel color theme for SVG/PNG/PDF exports.",
     )
 
@@ -483,6 +483,11 @@ def _add_profile_fields(parser: argparse.ArgumentParser) -> None:
         help="Default node type.",
     )
     parser.add_argument("--tenant-id", help="Default tenant id.")
+    parser.add_argument("--wheel-theme", choices=["night", "day"], help="Default natal wheel theme.")
+    parser.add_argument("--accent", help="Default natal accent hex color.")
+    parser.add_argument("--brand-title", help="Default natal brand title for exports.")
+    parser.add_argument("--brand-url", help="Default natal brand URL for PDF footer.")
+    parser.add_argument("--premium-url", help="Default natal premium URL callout for PDF.")
     parser.add_argument(
         "--format",
         dest="output_format",
@@ -1220,14 +1225,19 @@ def _render_natal_text(report) -> str:
 
 def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
     exports: list[Path] = []
+    accent = args.accent or "#3ddd77"
+    brand_title = args.brand_title or "OPASTRO"
+    brand_url = args.brand_url or "https://opastro.com"
+    premium_url = args.premium_url or "https://numerologyapi.com"
+    wheel_theme = args.wheel_theme or "night"
 
     if args.wheel_svg:
         svg = build_natal_wheel_svg(
             report,
-            accent_color=args.accent,
-            brand_title=args.brand_title,
+            accent_color=accent,
+            brand_title=brand_title,
             user_name=getattr(args, "user_name", None),
-            theme=args.wheel_theme,
+            theme=wheel_theme,
         )
         target = _save_export(svg, args.wheel_svg)
         exports.append(target)
@@ -1235,10 +1245,10 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
     if args.wheel_png:
         png_bytes = build_natal_wheel_png(
             report,
-            accent_color=args.accent,
-            brand_title=args.brand_title,
+            accent_color=accent,
+            brand_title=brand_title,
             user_name=getattr(args, "user_name", None),
-            theme=args.wheel_theme,
+            theme=wheel_theme,
         )
         target = Path(args.wheel_png).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1253,12 +1263,12 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
     if args.pdf:
         pdf_bytes = build_natal_report_pdf(
             report,
-            accent_color=args.accent,
-            brand_title=args.brand_title,
+            accent_color=accent,
+            brand_title=brand_title,
             user_name=getattr(args, "user_name", None),
-            brand_url=args.brand_url,
-            premium_url=args.premium_url,
-            wheel_theme=args.wheel_theme,
+            brand_url=brand_url,
+            premium_url=premium_url,
+            wheel_theme=wheel_theme,
         )
         target = Path(args.pdf).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1733,10 +1743,19 @@ def _profile_payload_from_args(
     if birth is not None:
         profile["birth"] = birth.model_dump(exclude_none=True)
 
-    for field in ("zodiac_system", "ayanamsa", "house_system", "node_type", "tenant_id"):
+    for field in ("zodiac_system", "ayanamsa", "house_system", "node_type", "tenant_id", "wheel_theme"):
         value = getattr(args, field, None)
         if value is not None:
             profile[field] = value
+
+    for field in ("accent", "brand_title", "brand_url", "premium_url"):
+        value = getattr(args, field, None)
+        if value is not None:
+            cleaned = str(value).strip()
+            if cleaned:
+                profile[field] = cleaned
+            elif field in profile:
+                profile.pop(field, None)
 
     output_format = getattr(args, "output_format", None)
     if output_format is not None:
@@ -1782,7 +1801,18 @@ def _apply_profile_defaults(args: argparse.Namespace) -> None:
     if getattr(args, "sections", None) is None and profile.get("sections"):
         args.sections = ",".join(profile["sections"])
 
-    for field in ("zodiac_system", "ayanamsa", "house_system", "node_type", "tenant_id"):
+    for field in (
+        "zodiac_system",
+        "ayanamsa",
+        "house_system",
+        "node_type",
+        "tenant_id",
+        "wheel_theme",
+        "accent",
+        "brand_title",
+        "brand_url",
+        "premium_url",
+    ):
         if getattr(args, field, None) is None and profile.get(field) is not None:
             setattr(args, field, profile[field])
 
@@ -1798,6 +1828,8 @@ def _handle_init(args: argparse.Namespace) -> int:
     _print_heading("OPASTRO INIT")
     _print_divider()
     print(_wrap("Interactive onboarding to save your default profile for repeat report commands."))
+
+    user_name = _prompt_text("Default display name for natal charts (optional)", existing.get("user_name"))
 
     sign_default = existing.get("sign")
     while True:
@@ -1839,8 +1871,14 @@ def _handle_init(args: argparse.Namespace) -> int:
     house_system = _prompt_text("Default house system (optional)", existing.get("house_system"))
     node_type = _prompt_text("Default node type (optional)", existing.get("node_type"))
     tenant_id = _prompt_text("Default tenant id (optional)", existing.get("tenant_id"))
+    wheel_theme = _prompt_text("Default natal wheel theme (night/day, optional)", existing.get("wheel_theme"))
+    accent = _prompt_text("Default natal accent hex (optional)", existing.get("accent"))
+    brand_title = _prompt_text("Default natal brand title (optional)", existing.get("brand_title"))
+    brand_url = _prompt_text("Default natal brand URL (optional)", existing.get("brand_url"))
+    premium_url = _prompt_text("Default natal premium URL (optional)", existing.get("premium_url"))
 
     profile_args = argparse.Namespace(
+        user_name=user_name or None,
         sign=sign,
         birth_date=birth_date or None,
         birth_time=birth_time or None,
@@ -1853,6 +1891,11 @@ def _handle_init(args: argparse.Namespace) -> int:
         house_system=house_system or None,
         node_type=node_type or None,
         tenant_id=tenant_id or None,
+        wheel_theme=wheel_theme or None,
+        accent=accent or None,
+        brand_title=brand_title or None,
+        brand_url=brand_url or None,
+        premium_url=premium_url or None,
         output_format=(output_format or "text").lower(),
     )
 
@@ -1863,6 +1906,7 @@ def _handle_init(args: argparse.Namespace) -> int:
         "ayanamsa": {"lahiri", "fagan_bradley", "krishnamurti", "raman", "yukteswar"},
         "house_system": {"placidus", "whole_sign", "equal", "koch"},
         "node_type": {"true", "mean"},
+        "wheel_theme": {"night", "day"},
     }
     for field, choices in allowed_values.items():
         value = getattr(profile_args, field)

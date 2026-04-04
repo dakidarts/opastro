@@ -32,6 +32,7 @@ This opens the main welcome UI with command overview.
 ```bash
 opastro init
 opastro profile list
+opastro profile save --name natal --set-active --user-name "Dakidarts" --wheel-theme day --accent "#3ddd77"
 ```
 
 ## Enable Completions

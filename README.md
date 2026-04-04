@@ -143,6 +143,9 @@ opastro init
 # Save profile defaults without prompts
 opastro profile save --name work --sign ARIES --format markdown --set-active
 
+# Save natal-specific profile defaults (theme/branding)
+opastro profile save --name natal --set-active --user-name "Dakidarts" --wheel-theme day --accent "#3ddd77"
+
 # Switch active profile
 opastro profile use work
 
