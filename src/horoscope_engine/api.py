@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from importlib import metadata as importlib_metadata
 
 from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.responses import Response, JSONResponse
@@ -31,14 +30,10 @@ from .natal_artifacts import (
 from .observability import MetricsCollector, Timer
 from .pregen import pregenerate
 from .service import HoroscopeService
+from .versioning import resolve_version
 
 
-try:
-    _APP_VERSION = importlib_metadata.version("opastro")
-except importlib_metadata.PackageNotFoundError:
-    _APP_VERSION = "dev"
-
-app = FastAPI(title="NumerologyAPI Horoscope Engine", version=_APP_VERSION)
+app = FastAPI(title="OpAstro Engine API", version=resolve_version("opastro"))
 logger = logging.getLogger(__name__)
 
 service_config = ServiceConfig()

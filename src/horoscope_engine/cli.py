@@ -7,7 +7,6 @@ from datetime import date, datetime
 import difflib
 from html import escape as html_escape
 import importlib
-from importlib import metadata as importlib_metadata
 from io import StringIO
 import json
 import os
@@ -42,6 +41,7 @@ from .natal_artifacts import (
 )
 from .profiles import DEFAULT_PROFILE_NAME, ProfileStore
 from .service import HoroscopeService
+from .versioning import resolve_version
 
 WELCOME_BANNER = r"""
    ____  ____   ___   _____ _______ ____   ____ 
@@ -94,10 +94,7 @@ class OpastroArgumentParser(argparse.ArgumentParser):
 
 
 def _app_version() -> str:
-    try:
-        return importlib_metadata.version("opastro")
-    except importlib_metadata.PackageNotFoundError:
-        return "dev"
+    return resolve_version("opastro")
 
 
 def _parse_date(raw: str) -> date:
@@ -874,19 +871,19 @@ def _render_pretty_report(payload) -> int:
 
     for insight in payload.sections:
         section_label = insight.section.value.replace("_", " ").title()
-        print(_style(f"{section_label} ({insight.intensity})", "1;33"))
+        print(_style(f"{section_label} ({insight.intensity})", COLOR_ACCENT_BOLD))
         print(_wrap(insight.summary, indent="  "))
 
         if insight.highlights:
-            print(_style("  Highlights", "1"))
+            print(_style("  Highlights", COLOR_ACCENT_SOFT))
             for item in insight.highlights[:3]:
                 print(_wrap_bullet(item))
         if insight.cautions:
-            print(_style("  Cautions", "1"))
+            print(_style("  Cautions", COLOR_ACCENT_SOFT))
             for item in insight.cautions[:2]:
                 print(_wrap_bullet(item))
         if insight.actions:
-            print(_style("  Actions", "1"))
+            print(_style("  Actions", COLOR_ACCENT_SOFT))
             for item in insight.actions[:2]:
                 print(_wrap_bullet(item))
         _print_divider("·")

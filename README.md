@@ -111,6 +111,9 @@ opastro
 | `opastro batch` | Multi-sign / multi-date report generation |
 | `opastro serve` | Run local FastAPI app |
 
+Global flags:
+- `opastro -v` / `opastro --version` prints installed/source version.
+
 ### Report Flags
 
 - `--period {daily,weekly,monthly,yearly}` (required for `horoscope`, `planet`)
