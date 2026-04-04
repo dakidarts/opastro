@@ -256,10 +256,64 @@ class NatalPlanetCondition(BaseModel):
     notes: List[str] = Field(default_factory=list)
 
 
+class NatalHouseRulerPlacement(BaseModel):
+    planet: str
+    sign: str
+    house: Optional[int] = None
+    retrograde: bool = False
+    strength: float = Field(..., ge=0.0)
+
+
+class NatalHouseRulershipInsight(BaseModel):
+    house: int = Field(..., ge=1, le=12)
+    area: str
+    cusp_sign: str
+    rulers: List[str] = Field(default_factory=list)
+    ruler_placements: List[NatalHouseRulerPlacement] = Field(default_factory=list)
+    emphasis: float = Field(..., ge=0.0, le=1.0)
+    notes: List[str] = Field(default_factory=list)
+
+
+class NatalLifeAreaVector(BaseModel):
+    area: str
+    houses: List[int] = Field(default_factory=list)
+    score: float = Field(..., ge=0.0, le=100.0)
+    emphasis: str
+    drivers: List[str] = Field(default_factory=list)
+
+
+class NatalTimingActivation(BaseModel):
+    start_date: date
+    end_date: date
+    transit_planet: str
+    natal_planet: str
+    aspect: str
+    orb: float = Field(..., ge=0.0)
+    intensity: float = Field(..., ge=0.0, le=1.0)
+    summary: str
+
+
+class NatalTimingOverlay(BaseModel):
+    generated_for: date
+    activations: List[NatalTimingActivation] = Field(default_factory=list)
+
+
+class NatalModuleInsight(BaseModel):
+    score: float = Field(..., ge=0.0, le=100.0)
+    highlights: List[str] = Field(default_factory=list)
+    cautions: List[str] = Field(default_factory=list)
+    actions: List[str] = Field(default_factory=list)
+
+
 class NatalPremiumInsights(BaseModel):
     dominant_signature: NatalDominantSignature
     aspect_patterns: List[NatalAspectPattern] = Field(default_factory=list)
     planet_conditions: List[NatalPlanetCondition] = Field(default_factory=list)
+    house_rulership: List[NatalHouseRulershipInsight] = Field(default_factory=list)
+    life_area_vectors: List[NatalLifeAreaVector] = Field(default_factory=list)
+    timing_overlay: Optional[NatalTimingOverlay] = None
+    relationship_module: Optional[NatalModuleInsight] = None
+    career_module: Optional[NatalModuleInsight] = None
 
 
 class BodyPosition(BaseModel):

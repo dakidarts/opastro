@@ -24,6 +24,12 @@ from .models import (
     NatalAspectPattern,
     NatalPlanetCondition,
     NatalPremiumInsights,
+    NatalHouseRulershipInsight,
+    NatalHouseRulerPlacement,
+    NatalLifeAreaVector,
+    NatalTimingOverlay,
+    NatalTimingActivation,
+    NatalModuleInsight,
     Period,
     PeriodCelestialData,
     PlanetHoroscopeRequest,
@@ -170,6 +176,34 @@ FOCUS_PLANETS = {
     "Pluto",
     "Chiron",
 }
+
+HOUSE_AREA_LABELS = {
+    1: "identity_direction",
+    2: "resources_values",
+    3: "communication_learning",
+    4: "home_foundation",
+    5: "creativity_romance",
+    6: "craft_health",
+    7: "partnerships",
+    8: "shared_assets_transformation",
+    9: "vision_belief_growth",
+    10: "career_public_role",
+    11: "community_networks",
+    12: "inner_world_recovery",
+}
+
+LIFE_AREA_VECTOR_DEFS: list[tuple[str, list[int]]] = [
+    ("self_leadership", [1, 5, 10]),
+    ("relationships_collaboration", [5, 7, 11]),
+    ("resources_execution", [2, 6, 10]),
+    ("emotional_foundation", [4, 8, 12]),
+    ("learning_perspective", [3, 9, 11]),
+]
+
+TIMING_TRANSIT_WEIGHTS = {"Mars": 1.0, "Jupiter": 0.9, "Saturn": 0.85}
+TIMING_NATAL_WEIGHTS = {"Sun": 1.0, "Moon": 0.95, "Mercury": 0.8, "Venus": 0.85, "Mars": 0.9}
+TIMING_ASPECT_TARGETS = {"conjunction": 0.0, "sextile": 60.0, "square": 90.0, "trine": 120.0, "opposition": 180.0}
+TIMING_ASPECT_WEIGHTS = {"conjunction": 1.0, "opposition": 0.92, "square": 0.88, "trine": 0.86, "sextile": 0.78}
 
 
 class HoroscopeService:
@@ -416,16 +450,23 @@ class HoroscopeService:
         ephemeris = self._resolve_ephemeris(request)
         include_houses = self._can_use_precise_houses(request.birth)
         coordinates = self._coords_tuple(request.birth) if include_houses else None
+        birth_dt = self._birth_datetime(request.birth)
         snapshot = ephemeris.chart_snapshot(
-            self._birth_datetime(request.birth),
+            birth_dt,
             include_houses=include_houses,
             coordinates=coordinates,
         )
         planet_conditions = self._natal_planet_conditions(snapshot)
+        house_rulership = self._natal_house_rulership(snapshot, planet_conditions)
         premium_insights = NatalPremiumInsights(
             dominant_signature=self._natal_dominant_signature(snapshot, planet_conditions),
             aspect_patterns=self._natal_aspect_patterns(snapshot),
             planet_conditions=planet_conditions,
+            house_rulership=house_rulership,
+            life_area_vectors=self._natal_life_area_vectors(house_rulership),
+            timing_overlay=self._natal_timing_overlay(ephemeris, snapshot, birth_dt),
+            relationship_module=self._natal_relationship_module(snapshot, house_rulership, planet_conditions),
+            career_module=self._natal_career_module(snapshot, house_rulership, planet_conditions),
         )
         return NatalBirthchartResponse(
             report_type=ReportType.NATAL_BIRTHCHART,
@@ -800,3 +841,330 @@ class HoroscopeService:
 
         patterns.sort(key=lambda item: (-item.confidence, item.pattern, ",".join(item.bodies)))
         return patterns
+
+    def _natal_house_rulership(
+        self,
+        snapshot: ChartSnapshot,
+        planet_conditions: List[NatalPlanetCondition],
+    ) -> List[NatalHouseRulershipInsight]:
+        positions_by_name = {position.name: position for position in snapshot.positions if position.name in FOCUS_PLANETS}
+        strength_by_planet = {condition.planet: condition.strength for condition in planet_conditions}
+        house_signs, estimated = self._natal_house_signs(snapshot)
+
+        output: List[NatalHouseRulershipInsight] = []
+        for house in range(1, 13):
+            cusp_sign = house_signs[house - 1]
+            rulers = sorted(SIGN_RULERS.get(cusp_sign, set()))
+            ruler_placements: List[NatalHouseRulerPlacement] = []
+            ruler_strengths: List[float] = []
+            notes: List[str] = []
+
+            for ruler in rulers:
+                position = positions_by_name.get(ruler)
+                if not position:
+                    continue
+                strength = strength_by_planet.get(ruler, 1.0)
+                ruler_strengths.append(strength)
+                ruler_placements.append(
+                    NatalHouseRulerPlacement(
+                        planet=ruler,
+                        sign=position.sign,
+                        house=position.house,
+                        retrograde=position.retrograde,
+                        strength=round(strength, 3),
+                    )
+                )
+
+            occupants = self._house_occupants(snapshot, house, cusp_sign)
+            if occupants:
+                notes.append("Occupants: " + ", ".join(sorted(occupants)))
+
+            if ruler_placements:
+                placement_labels = ", ".join(
+                    f"{item.planet} h{item.house}" if item.house else f"{item.planet} in {item.sign}"
+                    for item in ruler_placements
+                )
+                notes.append("Ruler placement: " + placement_labels)
+
+            if estimated:
+                notes.append("Estimated house wheel (missing exact birth time and/or coordinates).")
+
+            angular_weight = 1.0 if house in {1, 4, 7, 10} else 0.7 if house in {2, 5, 8, 11} else 0.5
+            occupancy_score = min(1.0, len(occupants) / 3.0)
+            ruler_score = min(1.0, (sum(ruler_strengths) / len(ruler_strengths)) / 1.8) if ruler_strengths else 0.45
+            emphasis = 0.20 + (0.45 * ruler_score) + (0.25 * occupancy_score) + (0.10 * angular_weight)
+
+            output.append(
+                NatalHouseRulershipInsight(
+                    house=house,
+                    area=HOUSE_AREA_LABELS[house],
+                    cusp_sign=cusp_sign,
+                    rulers=rulers,
+                    ruler_placements=ruler_placements,
+                    emphasis=round(self._clamp(emphasis, 0.0, 1.0), 3),
+                    notes=notes,
+                )
+            )
+
+        return output
+
+    def _natal_house_signs(self, snapshot: ChartSnapshot) -> tuple[list[str], bool]:
+        if snapshot.house_cusps and len(snapshot.house_cusps) == 12:
+            return [self._sign_from_longitude(cusp) for cusp in snapshot.house_cusps], False
+
+        if snapshot.rising_sign and snapshot.rising_sign in ZODIAC_SIGNS:
+            start_idx = ZODIAC_SIGNS.index(snapshot.rising_sign)
+            return [ZODIAC_SIGNS[(start_idx + idx) % 12] for idx in range(12)], True
+
+        start_idx = ZODIAC_SIGNS.index(snapshot.sun_sign)
+        return [ZODIAC_SIGNS[(start_idx + idx) % 12] for idx in range(12)], True
+
+    def _house_occupants(self, snapshot: ChartSnapshot, house: int, cusp_sign: str) -> list[str]:
+        occupants: list[str] = []
+        for position in snapshot.positions:
+            if position.name not in FOCUS_PLANETS:
+                continue
+            if position.house is not None:
+                if position.house == house:
+                    occupants.append(position.name)
+                continue
+            if position.sign == cusp_sign:
+                occupants.append(position.name)
+        return occupants
+
+    def _sign_from_longitude(self, longitude: float) -> str:
+        return ZODIAC_SIGNS[int((longitude % 360.0) // 30)]
+
+    def _natal_life_area_vectors(
+        self,
+        house_rulership: List[NatalHouseRulershipInsight],
+    ) -> List[NatalLifeAreaVector]:
+        by_house = {entry.house: entry for entry in house_rulership}
+        vectors: List[NatalLifeAreaVector] = []
+        for area, houses in LIFE_AREA_VECTOR_DEFS:
+            selected = [by_house[house] for house in houses if house in by_house]
+            if not selected:
+                continue
+            avg_emphasis = sum(entry.emphasis for entry in selected) / len(selected)
+            score = round(avg_emphasis * 100.0, 1)
+            drivers = [
+                f"House {entry.house} ({entry.cusp_sign})"
+                for entry in sorted(selected, key=lambda item: (-item.emphasis, item.house))[:2]
+            ]
+            vectors.append(
+                NatalLifeAreaVector(
+                    area=area,
+                    houses=houses,
+                    score=score,
+                    emphasis=self._score_band(score),
+                    drivers=drivers,
+                )
+            )
+        vectors.sort(key=lambda item: (-item.score, item.area))
+        return vectors
+
+    def _natal_timing_overlay(
+        self,
+        ephemeris: EphemerisEngine,
+        snapshot: ChartSnapshot,
+        birth_dt: datetime,
+    ) -> NatalTimingOverlay:
+        natal_positions = {position.name: position.longitude for position in snapshot.positions if position.name in TIMING_NATAL_WEIGHTS}
+        if not natal_positions:
+            return NatalTimingOverlay(generated_for=date.today(), activations=[])
+
+        base_date = date.today()
+        base_dt = datetime.combine(base_date, time(hour=birth_dt.hour, minute=birth_dt.minute))
+        candidates: list[tuple[float, date, str, str, str, float]] = []
+        seen: set[tuple[date, str, str, str]] = set()
+        orb_limit = 1.2
+
+        for day_offset in range(0, 181, 3):
+            transit_date = base_dt + timedelta(days=day_offset)
+            transit_snapshot = ephemeris.chart_snapshot(transit_date, include_houses=False)
+            transits = {position.name: position.longitude for position in transit_snapshot.positions if position.name in TIMING_TRANSIT_WEIGHTS}
+            for transit_planet, transit_longitude in transits.items():
+                for natal_planet, natal_longitude in natal_positions.items():
+                    angle = abs(transit_longitude - natal_longitude)
+                    if angle > 180.0:
+                        angle = 360.0 - angle
+                    for aspect, target in TIMING_ASPECT_TARGETS.items():
+                        orb = abs(angle - target)
+                        if orb > orb_limit:
+                            continue
+                        key = (transit_date.date(), transit_planet, natal_planet, aspect)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        intensity = (
+                            (1.0 - (orb / orb_limit))
+                            * TIMING_TRANSIT_WEIGHTS[transit_planet]
+                            * TIMING_NATAL_WEIGHTS[natal_planet]
+                            * TIMING_ASPECT_WEIGHTS[aspect]
+                        )
+                        candidates.append((intensity, transit_date.date(), transit_planet, natal_planet, aspect, orb))
+
+        activations: List[NatalTimingActivation] = []
+        for intensity, hit_date, transit_planet, natal_planet, aspect, orb in sorted(
+            candidates, key=lambda item: (-item[0], item[1], item[2], item[3], item[4])
+        )[:12]:
+            start_date = max(base_date, hit_date - timedelta(days=1))
+            end_date = hit_date + timedelta(days=1)
+            summary = self._timing_summary(transit_planet, natal_planet, aspect)
+            activations.append(
+                NatalTimingActivation(
+                    start_date=start_date,
+                    end_date=end_date,
+                    transit_planet=transit_planet,
+                    natal_planet=natal_planet,
+                    aspect=aspect,
+                    orb=round(orb, 2),
+                    intensity=round(self._clamp(intensity, 0.0, 1.0), 3),
+                    summary=summary,
+                )
+            )
+
+        return NatalTimingOverlay(generated_for=base_date, activations=activations)
+
+    def _timing_summary(self, transit_planet: str, natal_planet: str, aspect: str) -> str:
+        aspect_meaning = {
+            "conjunction": "amplifies and concentrates",
+            "sextile": "opens practical opportunities for",
+            "square": "creates pressure that upgrades",
+            "trine": "supports fluent progress in",
+            "opposition": "reveals balancing lessons around",
+        }
+        return (
+            f"{transit_planet} {aspect} natal {natal_planet} "
+            f"{aspect_meaning.get(aspect, 'activates')} this theme."
+        )
+
+    def _natal_relationship_module(
+        self,
+        snapshot: ChartSnapshot,
+        house_rulership: List[NatalHouseRulershipInsight],
+        planet_conditions: List[NatalPlanetCondition],
+    ) -> NatalModuleInsight:
+        condition_by_planet = {condition.planet: condition for condition in planet_conditions}
+        relation_planets = [name for name in ["Venus", "Mars", "Moon"] if name in condition_by_planet]
+        relation_strength = (
+            sum(condition_by_planet[name].strength for name in relation_planets) / len(relation_planets)
+            if relation_planets
+            else 1.0
+        )
+
+        house7 = next((entry for entry in house_rulership if entry.house == 7), None)
+        house5 = next((entry for entry in house_rulership if entry.house == 5), None)
+        house8 = next((entry for entry in house_rulership if entry.house == 8), None)
+        house_emphasis = (
+            (house7.emphasis if house7 else 0.55)
+            + (house5.emphasis if house5 else 0.5)
+            + (house8.emphasis if house8 else 0.5)
+        ) / 3.0
+
+        supportive = 0
+        tension = 0
+        for aspect in snapshot.aspects:
+            pair = {aspect.body1, aspect.body2}
+            if pair not in ({"Venus", "Mars"}, {"Venus", "Moon"}, {"Mars", "Moon"}):
+                continue
+            if aspect.aspect in {"conjunction", "trine", "sextile"}:
+                supportive += 1
+            if aspect.aspect in {"square", "opposition"}:
+                tension += 1
+
+        score = 50.0 + ((relation_strength - 1.0) * 25.0) + ((house_emphasis - 0.5) * 30.0) + (supportive * 5.5) - (tension * 4.0)
+        score = round(self._clamp(score, 0.0, 100.0), 1)
+
+        highlights = [
+            f"Partnership axis emphasis ({round((house7.emphasis if house7 else 0.5) * 100, 1)}).",
+            f"Relational planet condition baseline: {round(relation_strength, 2)}.",
+        ]
+        if supportive:
+            highlights.append(f"Supportive Venus/Mars/Moon aspect count: {supportive}.")
+
+        cautions = []
+        if tension:
+            cautions.append(f"Relational tension aspect count: {tension}; pace emotional reactions.")
+        if house8 and house8.emphasis >= 0.7:
+            cautions.append("High 8th-house emphasis can intensify trust and boundary topics.")
+        if not cautions:
+            cautions.append("Low-friction profile still benefits from direct expectations and pacing.")
+
+        actions = [
+            "Name one relationship priority and one non-negotiable boundary for this cycle.",
+            "Use weekly check-ins to convert emotional assumptions into explicit agreements.",
+        ]
+
+        return NatalModuleInsight(score=score, highlights=highlights, cautions=cautions, actions=actions)
+
+    def _natal_career_module(
+        self,
+        snapshot: ChartSnapshot,
+        house_rulership: List[NatalHouseRulershipInsight],
+        planet_conditions: List[NatalPlanetCondition],
+    ) -> NatalModuleInsight:
+        condition_by_planet = {condition.planet: condition for condition in planet_conditions}
+        career_planets = [name for name in ["Sun", "Saturn", "Jupiter", "Mercury"] if name in condition_by_planet]
+        career_strength = (
+            sum(condition_by_planet[name].strength for name in career_planets) / len(career_planets)
+            if career_planets
+            else 1.0
+        )
+
+        house10 = next((entry for entry in house_rulership if entry.house == 10), None)
+        house6 = next((entry for entry in house_rulership if entry.house == 6), None)
+        house2 = next((entry for entry in house_rulership if entry.house == 2), None)
+        house_emphasis = (
+            (house10.emphasis if house10 else 0.55)
+            + (house6.emphasis if house6 else 0.5)
+            + (house2.emphasis if house2 else 0.5)
+        ) / 3.0
+
+        supportive = 0
+        friction = 0
+        for aspect in snapshot.aspects:
+            pair = {aspect.body1, aspect.body2}
+            if pair.isdisjoint({"Sun", "Saturn", "Jupiter", "Mercury"}):
+                continue
+            if aspect.aspect in {"conjunction", "trine", "sextile"}:
+                supportive += 1
+            if aspect.aspect in {"square", "opposition"}:
+                friction += 1
+
+        score = 52.0 + ((career_strength - 1.0) * 24.0) + ((house_emphasis - 0.5) * 32.0) + (supportive * 2.0) - (friction * 1.4)
+        score = round(self._clamp(score, 0.0, 100.0), 1)
+
+        highlights = [
+            f"Career axis emphasis ({round((house10.emphasis if house10 else 0.5) * 100, 1)}).",
+            f"Execution baseline from Sun/Saturn/Jupiter/Mercury: {round(career_strength, 2)}.",
+        ]
+        if supportive:
+            highlights.append(f"Supportive career-planet aspect count: {supportive}.")
+
+        cautions = []
+        if friction:
+            cautions.append(f"Career friction aspect count: {friction}; sequence workload by priority.")
+        if house6 and house6.emphasis >= 0.7:
+            cautions.append("Heavy 6th-house emphasis rewards systems over heroic effort.")
+        if not cautions:
+            cautions.append("Stable signatures still improve with explicit milestones and review loops.")
+
+        actions = [
+            "Set one visible deliverable for the next 14 days and define its completion metric.",
+            "Align calendar blocks with your strongest work window before adding new commitments.",
+        ]
+
+        return NatalModuleInsight(score=score, highlights=highlights, cautions=cautions, actions=actions)
+
+    def _score_band(self, score: float) -> str:
+        if score >= 75.0:
+            return "high"
+        if score >= 60.0:
+            return "elevated"
+        if score >= 45.0:
+            return "steady"
+        return "quiet"
+
+    def _clamp(self, value: float, minimum: float, maximum: float) -> float:
+        return max(minimum, min(maximum, value))

@@ -107,6 +107,11 @@ Fields:
 - `dominant_signature`
 - `aspect_patterns[]`
 - `planet_conditions[]`
+- `house_rulership[]`
+- `life_area_vectors[]`
+- `timing_overlay`
+- `relationship_module`
+- `career_module`
 
 `dominant_signature` includes:
 - `element_balance`
@@ -129,6 +134,32 @@ Fields:
 - `retrograde`
 - `strength`
 - `notes[]`
+
+`house_rulership[]` item includes:
+- `house`
+- `area`
+- `cusp_sign`
+- `rulers[]`
+- `ruler_placements[]` (`planet`, `sign`, `house`, `retrograde`, `strength`)
+- `emphasis`
+- `notes[]`
+
+`life_area_vectors[]` item includes:
+- `area`
+- `houses[]`
+- `score` (`0` to `100`)
+- `emphasis` (`quiet` | `steady` | `elevated` | `high`)
+- `drivers[]`
+
+`timing_overlay` includes:
+- `generated_for`
+- `activations[]` (`start_date`, `end_date`, `transit_planet`, `natal_planet`, `aspect`, `orb`, `intensity`, `summary`)
+
+`relationship_module` / `career_module` include:
+- `score` (`0` to `100`)
+- `highlights[]`
+- `cautions[]`
+- `actions[]`
 
 ## `data` (`PeriodCelestialData`)
 - `period`, `start`, `end`
