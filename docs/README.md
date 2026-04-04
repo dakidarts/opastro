@@ -14,6 +14,30 @@
 
 This docs set tracks the current open-core codebase and CLI.
 
+## Python Import Namespace
+
+The branded SDK namespace is available at:
+- `src/opastro/__init__.py`
+
+Use whichever import style fits your app:
+
+```python
+import opastro as oa
+
+service = oa.HoroscopeService(oa.ServiceConfig())
+print(oa.__version__)
+```
+
+```python
+from opastro import HoroscopeService, ServiceConfig, HoroscopeRequest, Period
+```
+
+```python
+from opastro.config import ServiceConfig
+from opastro.models import HoroscopeRequest, Period
+from opastro.service import HoroscopeService
+```
+
 Install from PyPI:
 
 ```bash

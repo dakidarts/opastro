@@ -18,6 +18,27 @@ source .venv/bin/activate
 python3 -m pip install -e .
 ```
 
+## Python Library Import (Branded)
+
+```python
+import opastro as oa
+from datetime import date
+
+service = oa.HoroscopeService(oa.ServiceConfig())
+response = service.generate(
+    oa.HoroscopeRequest(period=oa.Period.DAILY, sign="ARIES", target_date=date(2026, 4, 3))
+)
+print(response.sign)
+```
+
+Alternative explicit module-style imports:
+
+```python
+from opastro.config import ServiceConfig
+from opastro.models import HoroscopeRequest, Period
+from opastro.service import HoroscopeService
+```
+
 ## First CLI Run
 
 ```bash

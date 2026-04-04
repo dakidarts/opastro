@@ -304,6 +304,39 @@ python3 -m twine upload dist/*
 
 Start here: [docs/README.md](https://github.com/dakidarts/opastro/blob/main/docs/README.md)
 
+## Branded Python Namespace
+
+OpAstro now ships a branded import namespace in:
+- `src/opastro/__init__.py`
+
+You can import the SDK in any of these styles:
+
+```python
+import opastro as oa
+
+service = oa.HoroscopeService(oa.ServiceConfig())
+print(oa.__version__)
+```
+
+```python
+from opastro import HoroscopeService, ServiceConfig, HoroscopeRequest, Period
+from datetime import date
+
+service = HoroscopeService(ServiceConfig())
+response = service.generate(
+    HoroscopeRequest(period=Period.DAILY, sign="ARIES", target_date=date(2026, 4, 3))
+)
+print(response.sign, response.period.value)
+```
+
+Module imports are also supported:
+
+```python
+from opastro.config import ServiceConfig
+from opastro.models import HoroscopeRequest, Period
+from opastro.service import HoroscopeService
+```
+
 ## Python Library Examples
 
 ### 1) Basic Daily Report (Sign Mode)
@@ -311,9 +344,9 @@ Start here: [docs/README.md](https://github.com/dakidarts/opastro/blob/main/docs
 ```python
 from datetime import date
 
-from horoscope_engine.config import ServiceConfig
-from horoscope_engine.models import HoroscopeRequest, Period
-from horoscope_engine.service import HoroscopeService
+from opastro.config import ServiceConfig
+from opastro.models import HoroscopeRequest, Period
+from opastro.service import HoroscopeService
 
 service = HoroscopeService(ServiceConfig())
 
@@ -335,9 +368,9 @@ for section in response.sections:
 ```python
 from datetime import date
 
-from horoscope_engine.config import ServiceConfig
-from horoscope_engine.models import BirthData, Coordinates, HoroscopeRequest, Period
-from horoscope_engine.service import HoroscopeService
+from opastro.config import ServiceConfig
+from opastro.models import BirthData, Coordinates, HoroscopeRequest, Period
+from opastro.service import HoroscopeService
 
 service = HoroscopeService(ServiceConfig())
 
@@ -364,9 +397,9 @@ print(response.data.snapshot.house_cusps)
 ```python
 from datetime import date
 
-from horoscope_engine.config import ServiceConfig
-from horoscope_engine.models import Period, PlanetHoroscopeRequest, PlanetName
-from horoscope_engine.service import HoroscopeService
+from opastro.config import ServiceConfig
+from opastro.models import Period, PlanetHoroscopeRequest, PlanetName
+from opastro.service import HoroscopeService
 
 service = HoroscopeService(ServiceConfig())
 
@@ -388,9 +421,9 @@ print(response.sections[0].title)
 ```python
 from datetime import date
 
-from horoscope_engine.config import ServiceConfig
-from horoscope_engine.models import HoroscopeRequest, Period
-from horoscope_engine.service import HoroscopeService
+from opastro.config import ServiceConfig
+from opastro.models import HoroscopeRequest, Period
+from opastro.service import HoroscopeService
 
 service = HoroscopeService(ServiceConfig())
 payload = service.generate(
