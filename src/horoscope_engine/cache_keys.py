@@ -64,6 +64,7 @@ def build_cache_key(
     ayanamsa: Optional[str],
     house_system: Optional[str],
     node_type: Optional[str],
+    user_name: Optional[str] = None,
     key_namespace: str = "horoscope",
 ) -> str:
     tenant = tenant_id or "public"
@@ -80,5 +81,6 @@ def build_cache_key(
     return (
         f"{key_namespace}:{tenant}:{period.value}:{source}:{sign or 'auto'}:{date_part}:"
         f"{sections_key}:{birth_key}:"
-        f"{zodiac_system or 'default'}:{ayanamsa or 'default'}:{house_system or 'default'}:{node_type or 'default'}"
+        f"{zodiac_system or 'default'}:{ayanamsa or 'default'}:{house_system or 'default'}:{node_type or 'default'}:"
+        f"{(user_name or 'none').strip() or 'none'}"
     ).lower()

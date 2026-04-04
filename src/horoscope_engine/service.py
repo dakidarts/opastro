@@ -472,6 +472,7 @@ class HoroscopeService:
             report_type=ReportType.NATAL_BIRTHCHART,
             sign=snapshot.sun_sign,
             birth=request.birth,
+            user_name=request.user_name,
             snapshot=snapshot,
             notable_events=self._build_notable_events(snapshot),
             premium_insights=premium_insights,

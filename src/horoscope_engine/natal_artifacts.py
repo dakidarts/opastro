@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import math
-from datetime import date
+import re
+from datetime import date, datetime
 from io import BytesIO
 from typing import Any, Optional
 
@@ -262,14 +263,14 @@ def build_natal_wheel_svg(
     accent_color: str = ACCENT_DEFAULT,
     size: int = 1080,
     brand_title: str = "OPASTRO",
+    user_name: Optional[str] = None,
 ) -> str:
     width = max(760, int(size))
-    height = int(width * 1.45)
-
+    top_margin = width * 0.07
     cx = width * 0.34
-    cy = height * 0.33
     ring_outer = width * 0.25
     ring_inner = width * 0.17
+    cy = top_margin + ring_outer + (width * 0.06)
     planet_radius = width * 0.145
     sign_symbol_radius = width * 0.225
     sign_name_radius = width * 0.205
@@ -398,34 +399,89 @@ def build_natal_wheel_svg(
     element_pct = _element_percentages(report)
     sign_polarity = _sign_polarity(report.sign)
 
-    planet_row_h = 29.0
-    profile_row_h = 20.0
+    planet_row_h = 24.0
+    profile_row_h = 18.0
     planet_card_x = width * 0.62
-    planet_card_y = height * 0.07
+    planet_card_y = top_margin
     planet_card_w = width * 0.33
-    planet_card_h = 84 + (len(focus_positions) * planet_row_h) + (6 * profile_row_h)
+    section_gap = max(12.0, width * 0.012)
+    aspect_visible_rows = aspect_rows[:6]
+    legend_card_x = planet_card_x
+    legend_card_w = planet_card_w
+    legend_inner_w = max(220.0, legend_card_w - 30.0)
+    sign_columns = 3 if legend_inner_w >= 320.0 else 2
+    sign_rows = int(math.ceil(len(ZODIAC_SIGNS) / sign_columns))
+    sign_row_h = 26.0
 
-    aspect_card_x = width * 0.62
-    aspect_card_y = planet_card_y + planet_card_h + (height * 0.025)
-    aspect_card_w = width * 0.33
-    aspect_card_h = 72 + (min(8, len(aspect_rows)) * 24) + 16
+    display_name = (user_name or report.user_name or brand_title).strip() or brand_title
+    house_system_label = {
+        "P": "Placidus",
+        "W": "Whole Sign",
+        "E": "Equal",
+        "K": "Koch",
+    }.get((report.snapshot.house_system or "").upper(), report.snapshot.house_system or "N/A")
+    coords = report.birth.coordinates
+    coords_text = (
+        f"{coords.latitude:.4f}, {coords.longitude:.4f}"
+        if coords is not None
+        else "N/A"
+    )
+    generated_dt = datetime.now().astimezone()
+    generation_text = generated_dt.strftime("%a, %d %b %Y %H:%M %Z")
+    metadata_lines = [
+        f"Name: {display_name}",
+        f"Birth: {report.birth.date.isoformat()} {report.birth.time or '12:00'}",
+        f"Coords: {coords_text}",
+        f"TZ: {report.birth.timezone or 'N/A'}",
+        f"House: {house_system_label}",
+        f"Zodiac: {(report.snapshot.zodiac_system or 'N/A').title()}",
+        f"Generated: {generation_text}",
+    ]
 
-    signs_card_x = width * 0.06
-    signs_card_y = height * 0.79
-    signs_card_w = width * 0.88
-    signs_card_h = 154.0
+    metadata_block_h = 24.0 + (len(metadata_lines) * 15.0)
+    planet_header_y = planet_card_y + metadata_block_h + 8.0
+    profile_line_count = 5
+    planet_card_h = (
+        metadata_block_h
+        + 62.0
+        + (len(focus_positions) * planet_row_h)
+        + (profile_line_count * profile_row_h)
+        + 18.0
+    )
+
+    legend_card_y = planet_card_y + planet_card_h + section_gap
+    aspect_section_h = 52.0 + (len(aspect_visible_rows) * 22.0)
+    signs_section_h = 44.0 + (sign_rows * sign_row_h)
+    legend_divider_gap = 14.0
+    legend_card_h = 18.0 + aspect_section_h + legend_divider_gap + signs_section_h + 16.0
+    wheel_bottom = cy + ring_outer
+    right_column_bottom = legend_card_y + legend_card_h
+    content_bottom = max(
+        wheel_bottom + (width * 0.05),
+        right_column_bottom + (width * 0.04),
+    )
+    height = int(max(width * 1.06, content_bottom))
 
     planet_rows_svg: list[str] = []
     planet_rows_svg.append(
-        f'<text x="{planet_card_x + 16:.2f}" y="{planet_card_y + 28:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
+        f'<text x="{planet_card_x + 16:.2f}" y="{planet_card_y + 22:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
+        f'fill="{accent_color}" font-weight="700">Profile Context</text>'
+    )
+    for idx, line in enumerate(metadata_lines):
+        y = planet_card_y + 42 + (idx * 15)
+        planet_rows_svg.append(
+            f'<text x="{planet_card_x + 16:.2f}" y="{y:.2f}" font-size="11.6" font-family="{TEXT_FONT_STACK}" fill="#c9d8ef">{line}</text>'
+        )
+    planet_rows_svg.append(
+        f'<text x="{planet_card_x + 16:.2f}" y="{planet_header_y:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
         f'fill="{accent_color}" font-weight="700">Planets &amp; Symbols</text>'
     )
     planet_rows_svg.append(
-        f'<text x="{planet_card_x + 16:.2f}" y="{planet_card_y + 50:.2f}" font-size="11.5" font-family="{TEXT_FONT_STACK}" fill="#8ca0c2">'
-        "Sy   Planet      Sign    H   R</text>"
+        f'<text x="{planet_card_x + 16:.2f}" y="{planet_header_y + 22:.2f}" font-size="11.5" font-family="{TEXT_FONT_STACK}" fill="#8ca0c2">'
+        "Symbol   Planet      Sign    House   Retro</text>"
     )
     for idx, position in enumerate(focus_positions):
-        y = planet_card_y + 70 + (idx * planet_row_h)
+        y = planet_header_y + 42 + (idx * planet_row_h)
         symbol = _symbol(PLANET_SYMBOL_CODEPOINT.get(position.name), position.name[:2].upper())
         sign_symbol = _symbol(ZODIAC_SYMBOL_CODEPOINT.get(position.sign), position.sign[:2])
         retro = "R" if position.retrograde else "-"
@@ -438,7 +494,7 @@ def build_natal_wheel_svg(
             f'<text x="{planet_card_x + 238:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{retro}</text>'
         )
 
-    profile_start_y = planet_card_y + 72 + (len(focus_positions) * planet_row_h) + 8
+    profile_start_y = planet_header_y + 44 + (len(focus_positions) * planet_row_h) + 8
     asc_text = "-"
     if asc:
         asc_degree = _degree_in_sign(asc["longitude"])
@@ -468,36 +524,46 @@ def build_natal_wheel_svg(
         )
 
     aspect_rows_svg: list[str] = []
+    aspect_section_top = legend_card_y + 18.0
+    aspect_title_y = aspect_section_top + 14.0
+    aspect_subhead_y = aspect_title_y + 22.0
+    aspect_rows_start_y = aspect_subhead_y + 22.0
     aspect_rows_svg.append(
-        f'<text x="{aspect_card_x + 16:.2f}" y="{aspect_card_y + 28:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
+        f'<text x="{legend_card_x + 16:.2f}" y="{aspect_title_y:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
         f'fill="{accent_color}" font-weight="700">Aspects &amp; Symbols</text>'
     )
     aspect_rows_svg.append(
-        f'<text x="{aspect_card_x + 16:.2f}" y="{aspect_card_y + 50:.2f}" font-size="11.5" font-family="{TEXT_FONT_STACK}" fill="#8ca0c2">'
+        f'<text x="{legend_card_x + 16:.2f}" y="{aspect_subhead_y:.2f}" font-size="11.5" font-family="{TEXT_FONT_STACK}" fill="#8ca0c2">'
         "Sy   Pair                           Orb</text>"
     )
-    for idx, row in enumerate(aspect_rows[:8]):
-        y = aspect_card_y + 72 + (idx * 24)
+    for idx, row in enumerate(aspect_visible_rows):
+        y = aspect_rows_start_y + (idx * 22.0)
         symbol = ASPECT_SYMBOL_TEXT.get(row["aspect"], "*")
         pair = f"{row['body1'][:3]} {row['aspect'][:4]} {row['body2'][:3]}"
         aspect_rows_svg.append(
-            f'<text x="{aspect_card_x + 18:.2f}" y="{y:.2f}" font-size="14" font-family="{SYMBOL_FONT_STACK}" fill="{ASPECT_LINE_COLOR.get(row["aspect"], "#d7e2f4")}">{symbol}</text>'
-            f'<text x="{aspect_card_x + 42:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{pair}</text>'
-            f'<text x="{aspect_card_x + 230:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{row["orb"]:.2f}</text>'
+            f'<text x="{legend_card_x + 18:.2f}" y="{y:.2f}" font-size="14" font-family="{SYMBOL_FONT_STACK}" fill="{ASPECT_LINE_COLOR.get(row["aspect"], "#d7e2f4")}">{symbol}</text>'
+            f'<text x="{legend_card_x + 42:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{pair}</text>'
+            f'<text x="{legend_card_x + legend_card_w - 52:.2f}" y="{y:.2f}" font-size="12.5" font-family="{TEXT_FONT_STACK}" fill="#d7e2f4">{row["orb"]:.2f}</text>'
         )
 
     signs_grid_svg: list[str] = []
+    signs_section_top = aspect_section_top + aspect_section_h + legend_divider_gap
+    signs_title_y = signs_section_top + 14.0
+    signs_rows_start_y = signs_title_y + 30.0
+    divider_y = signs_section_top - (legend_divider_gap * 0.5)
     signs_grid_svg.append(
-        f'<text x="{signs_card_x + 16:.2f}" y="{signs_card_y + 28:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
+        f'<line x1="{legend_card_x + 14:.2f}" y1="{divider_y:.2f}" x2="{legend_card_x + legend_card_w - 14:.2f}" y2="{divider_y:.2f}" stroke="#2a3f64" stroke-width="1.1" opacity="0.9" />'
+    )
+    signs_grid_svg.append(
+        f'<text x="{legend_card_x + 16:.2f}" y="{signs_title_y:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
         f'fill="{accent_color}" font-weight="700">Signs &amp; Symbols</text>'
     )
-    columns = 4
-    cell_w = (signs_card_w - 30.0) / columns
+    cell_w = (legend_card_w - 30.0) / sign_columns
     for idx, sign in enumerate(ZODIAC_SIGNS):
-        row_idx = idx // columns
-        col_idx = idx % columns
-        x = signs_card_x + 16 + (col_idx * cell_w)
-        y = signs_card_y + 58 + (row_idx * 32)
+        row_idx = idx // sign_columns
+        col_idx = idx % sign_columns
+        x = legend_card_x + 16 + (col_idx * cell_w)
+        y = signs_rows_start_y + (row_idx * sign_row_h)
         symbol = _symbol(ZODIAC_SYMBOL_CODEPOINT.get(sign), sign[:2])
         signs_grid_svg.append(
             f'<text x="{x:.2f}" y="{y:.2f}" font-size="16" font-family="{SYMBOL_FONT_STACK}" fill="#e2e8f0">{symbol}</text>'
@@ -521,8 +587,7 @@ def build_natal_wheel_svg(
   <rect x="0" y="0" width="{width}" height="{height}" fill="url(#wheelBg)" />
 
   <rect x="{planet_card_x:.2f}" y="{planet_card_y:.2f}" width="{planet_card_w:.2f}" height="{planet_card_h:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
-  <rect x="{aspect_card_x:.2f}" y="{aspect_card_y:.2f}" width="{aspect_card_w:.2f}" height="{aspect_card_h:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
-  <rect x="{signs_card_x:.2f}" y="{signs_card_y:.2f}" width="{signs_card_w:.2f}" height="{signs_card_h:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
+  <rect x="{legend_card_x:.2f}" y="{legend_card_y:.2f}" width="{legend_card_w:.2f}" height="{legend_card_h:.2f}" rx="14" fill="#0c1730" opacity="0.78" />
 
   <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_outer:.2f}" fill="none" stroke="{accent_color}" stroke-width="3.1" />
   <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner:.2f}" fill="none" stroke="#34486a" stroke-width="2.3" />
@@ -537,8 +602,8 @@ def build_natal_wheel_svg(
   {''.join(point_labels)}
   {''.join(angle_marks)}
 
-  <text x="{width * 0.06:.2f}" y="{height * 0.08:.2f}" font-size="44" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{brand_title}</text>
-  <text x="{width * 0.06:.2f}" y="{height * 0.11:.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="#8fa2c2">{wheel_title}</text>
+  <text x="{width * 0.06:.2f}" y="{(top_margin + 18):.2f}" font-size="44" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{display_name}</text>
+  <text x="{width * 0.06:.2f}" y="{(top_margin + 44):.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="#8fa2c2">{wheel_title}</text>
 
   {''.join(planet_rows_svg)}
   {''.join(aspect_rows_svg)}
@@ -553,6 +618,7 @@ def build_natal_wheel_png(
     accent_color: str = ACCENT_DEFAULT,
     size: int = 1080,
     brand_title: str = "OPASTRO",
+    user_name: Optional[str] = None,
 ) -> bytes:
     try:
         import cairosvg
@@ -563,9 +629,16 @@ def build_natal_wheel_png(
         accent_color=accent_color,
         size=size,
         brand_title=brand_title,
+        user_name=user_name,
     )
     width = max(760, int(size))
-    height = int(width * 1.45)
+    height = int(width * 1.2)
+    match = re.search(r'viewBox="0 0 ([0-9.]+) ([0-9.]+)"', svg)
+    if match:
+        vb_width = float(match.group(1))
+        vb_height = float(match.group(2))
+        if vb_width > 0:
+            height = max(1, int((vb_height / vb_width) * width))
     return cairosvg.svg2png(
         bytestring=svg.encode("utf-8"),
         output_width=width,
@@ -640,6 +713,7 @@ def build_house_overlay_map(report: NatalBirthchartResponse) -> dict[str, Any]:
 
     return {
         "report_type": report.report_type.value,
+        "user_name": report.user_name,
         "sign": report.sign,
         "birth_date": report.birth.date.isoformat(),
         "sign_polarity": _sign_polarity(report.sign),
@@ -658,6 +732,7 @@ def build_natal_report_pdf(
     *,
     accent_color: str = ACCENT_DEFAULT,
     brand_title: str = "OPASTRO",
+    user_name: Optional[str] = None,
     brand_url: str = "https://opastro.com",
     premium_url: str = "https://numerologyapi.com",
 ) -> bytes:
@@ -702,7 +777,7 @@ def build_natal_report_pdf(
     small_style.textColor = colors.HexColor("#475569")
 
     story: list[Any] = [
-        Paragraph(f"{brand_title} Natal Birthchart Report", title_style),
+        Paragraph(f"{(user_name or report.user_name or brand_title).strip() or brand_title} Natal Birthchart Report", title_style),
         Paragraph(
             f"Birth Date: {report.birth.date.isoformat()} • Sun Sign: {report.sign} • "
             f"Rising Sign: {report.snapshot.rising_sign or 'N/A'}",
@@ -717,6 +792,7 @@ def build_natal_report_pdf(
             report,
             accent_color=accent_color,
             brand_title=brand_title,
+            user_name=user_name,
             size=760,
         )
         image = Image(BytesIO(wheel_png), width=88 * mm, height=127 * mm)

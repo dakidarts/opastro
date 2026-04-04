@@ -224,6 +224,7 @@ class NatalBirthchartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     birth: BirthData
+    user_name: Optional[str] = Field(default=None, max_length=80)
     zodiac_system: Optional[ZodiacSystem] = None
     ayanamsa: Optional[AyanamsaSystem] = None
     house_system: Optional[HouseSystem] = None
@@ -424,6 +425,7 @@ class NatalBirthchartResponse(BaseModel):
     report_type: ReportType = ReportType.NATAL_BIRTHCHART
     sign: str
     birth: BirthData
+    user_name: Optional[str] = None
     snapshot: ChartSnapshot
     notable_events: List[str] = Field(default_factory=list)
     premium_insights: Optional[NatalPremiumInsights] = None

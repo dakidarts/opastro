@@ -412,6 +412,7 @@ def _add_natal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--lat", type=float, help="Birth latitude for house calculations.")
     parser.add_argument("--lon", type=float, help="Birth longitude for house calculations.")
     parser.add_argument("--timezone", help="IANA timezone, e.g. Africa/Douala.")
+    parser.add_argument("--user-name", help="Display name for personalized natal chart branding.")
     parser.add_argument("--zodiac-system", choices=["sidereal", "tropical"])
     parser.add_argument("--ayanamsa", choices=["lahiri", "fagan_bradley", "krishnamurti", "raman", "yukteswar"])
     parser.add_argument("--house-system", choices=["placidus", "whole_sign", "equal", "koch"])
@@ -429,6 +430,7 @@ def _add_natal_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_profile_fields(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--user-name", help="Default display name for personalized natal charts.")
     parser.add_argument("--sign", help="Default zodiac sign, e.g. ARIES.")
     parser.add_argument("--birth-date", help="Default birth date in ISO format YYYY-MM-DD.")
     parser.add_argument("--birth-time", help="Default birth time in HH:MM format.")
@@ -1059,6 +1061,7 @@ def _build_natal_request(args: argparse.Namespace) -> NatalBirthchartRequest:
         raise ValueError("--birth-date is required for natal reports.")
     return NatalBirthchartRequest(
         birth=birth,
+        user_name=getattr(args, "user_name", None),
         zodiac_system=args.zodiac_system,
         ayanamsa=args.ayanamsa,
         house_system=args.house_system,
@@ -1106,6 +1109,7 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
             report,
             accent_color=args.accent,
             brand_title=args.brand_title,
+            user_name=getattr(args, "user_name", None),
         )
         target = _save_export(svg, args.wheel_svg)
         exports.append(target)
@@ -1115,6 +1119,7 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
             report,
             accent_color=args.accent,
             brand_title=args.brand_title,
+            user_name=getattr(args, "user_name", None),
         )
         target = Path(args.wheel_png).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1131,6 +1136,7 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
             report,
             accent_color=args.accent,
             brand_title=args.brand_title,
+            user_name=getattr(args, "user_name", None),
             brand_url=args.brand_url,
             premium_url=args.premium_url,
         )
@@ -1587,6 +1593,14 @@ def _profile_payload_from_args(
 ) -> dict[str, Any]:
     profile = dict(base or {})
 
+    user_name = getattr(args, "user_name", None)
+    if user_name is not None:
+        cleaned = str(user_name).strip()
+        if cleaned:
+            profile["user_name"] = cleaned
+        elif "user_name" in profile:
+            profile.pop("user_name", None)
+
     sign = _normalize_sign(getattr(args, "sign", None))
     if sign is not None:
         profile["sign"] = sign
@@ -1617,9 +1631,18 @@ def _profile_payload_from_args(
 
 
 def _apply_profile_defaults(args: argparse.Namespace) -> None:
-    profile = ProfileStore().get_profile()
+    store = ProfileStore()
+    profile = store.get_profile()
     if not profile:
         return
+
+    active_profile_name = store.active_profile_name()
+    if hasattr(args, "user_name") and getattr(args, "user_name", None) is None:
+        from_profile = profile.get("user_name")
+        if from_profile:
+            args.user_name = str(from_profile)
+        elif active_profile_name and active_profile_name != DEFAULT_PROFILE_NAME:
+            args.user_name = active_profile_name
 
     if getattr(args, "sign", None) is None and profile.get("sign"):
         args.sign = profile["sign"]

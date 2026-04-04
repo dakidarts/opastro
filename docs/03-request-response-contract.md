@@ -67,6 +67,7 @@ Fields:
 
 Fields:
 - `birth` (required)
+- `user_name` (optional, chart personalization display name)
 - `zodiac_system`, `ayanamsa`, `house_system`, `node_type` (optional)
 - `tenant_id` (optional, max length 64)
 
@@ -167,7 +168,8 @@ These endpoints reuse `NatalBirthchartRequest`:
 - `POST /natal-birthchart/wheel.svg` -> `image/svg+xml`
 - `POST /natal-birthchart/wheel.png` -> `image/png`
 - `POST /natal-birthchart/house-overlay` -> JSON map:
-  - `report_type`, `sign`, `birth_date`
+- `report_type`, `sign`, `birth_date`
+- `user_name`
   - `sign_polarity`, `element_percentages` (`fire`, `earth`, `air`, `water`)
   - `ascendant` / `midheaven` (`sign`, `longitude`)
   - `house_system`, `rising_sign`

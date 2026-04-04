@@ -92,6 +92,7 @@ Notes:
 
 ```json
 {
+  "user_name": "Dakidarts",
   "birth": {
     "date": "2004-06-14",
     "time": "09:30",

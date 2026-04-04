@@ -227,6 +227,7 @@ def _get_natal_report(request: NatalBirthchartRequest, tenant: str | None) -> Na
         ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
         house_system=request.house_system.value if request.house_system else None,
         node_type=request.node_type.value if request.node_type else None,
+        user_name=request.user_name,
         key_namespace="natal_birthchart",
     )
     cached = cache.get(cache_key)

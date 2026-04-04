@@ -171,6 +171,7 @@ opastro planet --period monthly --planet mercury --sign TAURUS --target-date 202
 
 # Natal report + premium artifact exports
 opastro natal \
+  --user-name "Dakidarts" \
   --birth-date 2004-06-14 \
   --birth-time 09:30 \
   --lat 4.0511 \
