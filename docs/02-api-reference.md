@@ -104,6 +104,7 @@ Notes:
 - `birth.time` is optional (defaults to noon in engine logic).
 - `rising_sign` and full `house_cusps` require both `birth.time` and coordinates.
 - Alias route: `POST /natal-birthchart-report`.
+- Response includes `premium_insights` with dominant signature, detected aspect patterns, and planet condition scores.
 
 ## Headers
 

@@ -99,6 +99,36 @@ Top-level fields:
 - `birth`
 - `snapshot` (`ChartSnapshot`)
 - `notable_events` (list of strings)
+- `premium_insights` (optional)
+
+### `premium_insights` (`NatalPremiumInsights`)
+
+Fields:
+- `dominant_signature`
+- `aspect_patterns[]`
+- `planet_conditions[]`
+
+`dominant_signature` includes:
+- `element_balance`
+- `modality_balance`
+- `dominant_element`
+- `dominant_modality`
+- `angular_emphasis`
+- `top_planets[]`
+
+`aspect_patterns[]` item includes:
+- `pattern` (e.g. `grand_trine`, `t_square`, `kite`, `stellium`)
+- `bodies[]`
+- `confidence` (`0.0` to `1.0`)
+- `description`
+
+`planet_conditions[]` item includes:
+- `planet`
+- `sign`
+- `house`
+- `retrograde`
+- `strength`
+- `notes[]`
 
 ## `data` (`PeriodCelestialData`)
 - `period`, `start`, `end`

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+from itertools import combinations
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -19,6 +20,10 @@ from .models import (
     HoroscopeResponse,
     NatalBirthchartRequest,
     NatalBirthchartResponse,
+    NatalDominantSignature,
+    NatalAspectPattern,
+    NatalPlanetCondition,
+    NatalPremiumInsights,
     Period,
     PeriodCelestialData,
     PlanetHoroscopeRequest,
@@ -90,6 +95,80 @@ PLANET_FACTOR_ALLOWLIST_BY_PERIOD = {
         "outer_planet_focus",
         "nodal_axis",
     ],
+}
+
+SIGN_TO_ELEMENT = {
+    "ARIES": "fire",
+    "TAURUS": "earth",
+    "GEMINI": "air",
+    "CANCER": "water",
+    "LEO": "fire",
+    "VIRGO": "earth",
+    "LIBRA": "air",
+    "SCORPIO": "water",
+    "SAGITTARIUS": "fire",
+    "CAPRICORN": "earth",
+    "AQUARIUS": "air",
+    "PISCES": "water",
+}
+
+SIGN_TO_MODALITY = {
+    "ARIES": "cardinal",
+    "CANCER": "cardinal",
+    "LIBRA": "cardinal",
+    "CAPRICORN": "cardinal",
+    "TAURUS": "fixed",
+    "LEO": "fixed",
+    "SCORPIO": "fixed",
+    "AQUARIUS": "fixed",
+    "GEMINI": "mutable",
+    "VIRGO": "mutable",
+    "SAGITTARIUS": "mutable",
+    "PISCES": "mutable",
+}
+
+SIGN_TO_OPPOSITE = {
+    "ARIES": "LIBRA",
+    "TAURUS": "SCORPIO",
+    "GEMINI": "SAGITTARIUS",
+    "CANCER": "CAPRICORN",
+    "LEO": "AQUARIUS",
+    "VIRGO": "PISCES",
+    "LIBRA": "ARIES",
+    "SCORPIO": "TAURUS",
+    "SAGITTARIUS": "GEMINI",
+    "CAPRICORN": "CANCER",
+    "AQUARIUS": "LEO",
+    "PISCES": "VIRGO",
+}
+
+SIGN_RULERS = {
+    "ARIES": {"Mars"},
+    "TAURUS": {"Venus"},
+    "GEMINI": {"Mercury"},
+    "CANCER": {"Moon"},
+    "LEO": {"Sun"},
+    "VIRGO": {"Mercury"},
+    "LIBRA": {"Venus"},
+    "SCORPIO": {"Pluto", "Mars"},
+    "SAGITTARIUS": {"Jupiter"},
+    "CAPRICORN": {"Saturn"},
+    "AQUARIUS": {"Uranus", "Saturn"},
+    "PISCES": {"Neptune", "Jupiter"},
+}
+
+FOCUS_PLANETS = {
+    "Sun",
+    "Moon",
+    "Mercury",
+    "Venus",
+    "Mars",
+    "Jupiter",
+    "Saturn",
+    "Uranus",
+    "Neptune",
+    "Pluto",
+    "Chiron",
 }
 
 
@@ -342,12 +421,19 @@ class HoroscopeService:
             include_houses=include_houses,
             coordinates=coordinates,
         )
+        planet_conditions = self._natal_planet_conditions(snapshot)
+        premium_insights = NatalPremiumInsights(
+            dominant_signature=self._natal_dominant_signature(snapshot, planet_conditions),
+            aspect_patterns=self._natal_aspect_patterns(snapshot),
+            planet_conditions=planet_conditions,
+        )
         return NatalBirthchartResponse(
             report_type=ReportType.NATAL_BIRTHCHART,
             sign=snapshot.sun_sign,
             birth=request.birth,
             snapshot=snapshot,
             notable_events=self._build_notable_events(snapshot),
+            premium_insights=premium_insights,
         )
 
     def _resolve_sign(self, sign: Optional[str], birth: Optional[BirthData], ephemeris: EphemerisEngine) -> str:
@@ -505,3 +591,212 @@ class HoroscopeService:
         rising_idx = ZODIAC_SIGNS.index(rising_sign.upper())
         target_idx = ZODIAC_SIGNS.index(target_sign.upper())
         return ((target_idx - rising_idx) % 12) + 1
+
+    def _natal_planet_conditions(self, snapshot: ChartSnapshot) -> List[NatalPlanetCondition]:
+        planet_to_rulership_signs: dict[str, set[str]] = {}
+        for sign, rulers in SIGN_RULERS.items():
+            for ruler in rulers:
+                planet_to_rulership_signs.setdefault(ruler, set()).add(sign)
+
+        output: List[NatalPlanetCondition] = []
+        for position in snapshot.positions:
+            if position.name not in FOCUS_PLANETS:
+                continue
+            notes: List[str] = []
+            strength = 1.0
+
+            if position.house in {1, 4, 7, 10}:
+                strength += 0.35
+                notes.append("Angular house emphasis")
+            elif position.house in {2, 5, 8, 11}:
+                strength += 0.15
+                notes.append("Succedent house support")
+            elif position.house in {3, 6, 9, 12}:
+                strength += 0.05
+                notes.append("Cadent house adaptation")
+
+            if position.retrograde:
+                strength -= 0.2
+                notes.append("Retrograde introspection")
+            else:
+                strength += 0.05
+
+            if position.name in {"Sun", "Moon"}:
+                strength += 0.05
+                notes.append("Luminary weight")
+
+            rulers_for_sign = SIGN_RULERS.get(position.sign, set())
+            if position.name in rulers_for_sign:
+                strength += 0.25
+                notes.append("In domicile")
+
+            detriment_signs = {
+                SIGN_TO_OPPOSITE[ruling_sign]
+                for ruling_sign in planet_to_rulership_signs.get(position.name, set())
+                if ruling_sign in SIGN_TO_OPPOSITE
+            }
+            if position.sign in detriment_signs:
+                strength -= 0.15
+                notes.append("In detriment")
+
+            output.append(
+                NatalPlanetCondition(
+                    planet=position.name,
+                    sign=position.sign,
+                    house=position.house,
+                    retrograde=position.retrograde,
+                    strength=round(max(0.05, strength), 3),
+                    notes=notes,
+                )
+            )
+
+        output.sort(key=lambda item: (-item.strength, item.planet))
+        return output
+
+    def _natal_dominant_signature(
+        self,
+        snapshot: ChartSnapshot,
+        planet_conditions: List[NatalPlanetCondition],
+    ) -> NatalDominantSignature:
+        positions = [position for position in snapshot.positions if position.name in FOCUS_PLANETS]
+        total = len(positions) or 1
+        element_balance = {"fire": 0.0, "earth": 0.0, "air": 0.0, "water": 0.0}
+        modality_balance = {"cardinal": 0.0, "fixed": 0.0, "mutable": 0.0}
+
+        angular_counts = {"angular": 0.0, "succedent": 0.0, "cadent": 0.0}
+        for position in positions:
+            element = SIGN_TO_ELEMENT.get(position.sign)
+            if element:
+                element_balance[element] += 1.0
+            modality = SIGN_TO_MODALITY.get(position.sign)
+            if modality:
+                modality_balance[modality] += 1.0
+
+            if position.house in {1, 4, 7, 10}:
+                angular_counts["angular"] += 1.0
+            elif position.house in {2, 5, 8, 11}:
+                angular_counts["succedent"] += 1.0
+            elif position.house in {3, 6, 9, 12}:
+                angular_counts["cadent"] += 1.0
+
+        for key in element_balance:
+            element_balance[key] = round(element_balance[key] / total, 3)
+        for key in modality_balance:
+            modality_balance[key] = round(modality_balance[key] / total, 3)
+        for key in angular_counts:
+            angular_counts[key] = round(angular_counts[key] / total, 3)
+
+        dominant_element = max(element_balance, key=lambda key: (element_balance[key], key))
+        dominant_modality = max(modality_balance, key=lambda key: (modality_balance[key], key))
+        top_planets = [entry.planet for entry in planet_conditions[:3]]
+
+        return NatalDominantSignature(
+            element_balance=element_balance,
+            modality_balance=modality_balance,
+            dominant_element=dominant_element,
+            dominant_modality=dominant_modality,
+            angular_emphasis=angular_counts,
+            top_planets=top_planets,
+        )
+
+    def _natal_aspect_patterns(self, snapshot: ChartSnapshot) -> List[NatalAspectPattern]:
+        bodies = sorted({position.name for position in snapshot.positions if position.name in FOCUS_PLANETS})
+        if not bodies:
+            return []
+
+        by_aspect: dict[str, set[frozenset[str]]] = {}
+        for aspect in snapshot.aspects:
+            if aspect.body1 not in FOCUS_PLANETS or aspect.body2 not in FOCUS_PLANETS:
+                continue
+            pair = frozenset({aspect.body1, aspect.body2})
+            by_aspect.setdefault(aspect.aspect, set()).add(pair)
+
+        trines = by_aspect.get("trine", set())
+        squares = by_aspect.get("square", set())
+        oppositions = by_aspect.get("opposition", set())
+        sextiles = by_aspect.get("sextile", set())
+
+        patterns: List[NatalAspectPattern] = []
+        dedupe: set[tuple[str, tuple[str, ...]]] = set()
+
+        for a, b, c in combinations(bodies, 3):
+            pairs = [frozenset({a, b}), frozenset({a, c}), frozenset({b, c})]
+            if all(pair in trines for pair in pairs):
+                key = ("grand_trine", tuple(sorted((a, b, c))))
+                if key not in dedupe:
+                    dedupe.add(key)
+                    patterns.append(
+                        NatalAspectPattern(
+                            pattern="grand_trine",
+                            bodies=list(key[1]),
+                            confidence=0.9,
+                            description="Three-way trine circuit indicates fluent talent flow and effortless patterning.",
+                        )
+                    )
+
+        for pair in oppositions:
+            a, b = sorted(pair)
+            for c in bodies:
+                if c in {a, b}:
+                    continue
+                if frozenset({a, c}) in squares and frozenset({b, c}) in squares:
+                    key = ("t_square", tuple(sorted((a, b, c))))
+                    if key in dedupe:
+                        continue
+                    dedupe.add(key)
+                    patterns.append(
+                        NatalAspectPattern(
+                            pattern="t_square",
+                            bodies=list(key[1]),
+                            confidence=0.86,
+                            description="Opposition plus two squares marks productive tension and strong growth pressure.",
+                        )
+                    )
+
+        for pattern in [item for item in patterns if item.pattern == "grand_trine"]:
+            trio = pattern.bodies
+            for d in bodies:
+                if d in trio:
+                    continue
+                for idx, apex in enumerate(trio):
+                    others = [trio[(idx + 1) % 3], trio[(idx + 2) % 3]]
+                    if (
+                        frozenset({d, apex}) in oppositions
+                        and frozenset({d, others[0]}) in sextiles
+                        and frozenset({d, others[1]}) in sextiles
+                    ):
+                        key = ("kite", tuple(sorted((d, *trio))))
+                        if key in dedupe:
+                            continue
+                        dedupe.add(key)
+                        patterns.append(
+                            NatalAspectPattern(
+                                pattern="kite",
+                                bodies=list(key[1]),
+                                confidence=0.82,
+                                description="Grand trine anchored by an opposition/sextile axis enables directed output.",
+                            )
+                        )
+
+        sign_counts: dict[str, list[str]] = {}
+        for position in snapshot.positions:
+            if position.name not in FOCUS_PLANETS:
+                continue
+            sign_counts.setdefault(position.sign, []).append(position.name)
+        for sign, sign_bodies in sign_counts.items():
+            if len(sign_bodies) >= 3:
+                key = ("stellium", tuple(sorted(sign_bodies)))
+                if key in dedupe:
+                    continue
+                dedupe.add(key)
+                patterns.append(
+                    NatalAspectPattern(
+                        pattern="stellium",
+                        bodies=list(key[1]),
+                        confidence=0.74,
+                        description=f"Three or more planets in {sign} concentrates expression into one sign archetype.",
+                    )
+                )
+
+        patterns.sort(key=lambda item: (-item.confidence, item.pattern, ",".join(item.bodies)))
+        return patterns

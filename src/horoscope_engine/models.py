@@ -231,6 +231,37 @@ class NatalBirthchartRequest(BaseModel):
     tenant_id: Optional[str] = Field(default=None, max_length=64)
 
 
+class NatalDominantSignature(BaseModel):
+    element_balance: Dict[str, float]
+    modality_balance: Dict[str, float]
+    dominant_element: str
+    dominant_modality: str
+    angular_emphasis: Dict[str, float]
+    top_planets: List[str] = Field(default_factory=list)
+
+
+class NatalAspectPattern(BaseModel):
+    pattern: str
+    bodies: List[str]
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    description: str
+
+
+class NatalPlanetCondition(BaseModel):
+    planet: str
+    sign: str
+    house: Optional[int] = None
+    retrograde: bool = False
+    strength: float = Field(..., ge=0.0)
+    notes: List[str] = Field(default_factory=list)
+
+
+class NatalPremiumInsights(BaseModel):
+    dominant_signature: NatalDominantSignature
+    aspect_patterns: List[NatalAspectPattern] = Field(default_factory=list)
+    planet_conditions: List[NatalPlanetCondition] = Field(default_factory=list)
+
+
 class BodyPosition(BaseModel):
     name: str
     longitude: float
@@ -341,6 +372,7 @@ class NatalBirthchartResponse(BaseModel):
     birth: BirthData
     snapshot: ChartSnapshot
     notable_events: List[str] = Field(default_factory=list)
+    premium_insights: Optional[NatalPremiumInsights] = None
 
 
 class PregenRequest(BaseModel):
