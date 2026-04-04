@@ -108,6 +108,7 @@ Notes:
 - `birth.date` is required.
 - `birth.time` is optional (defaults to noon in engine logic).
 - `rising_sign` and full `house_cusps` require both `birth.time` and coordinates.
+- `user_name` drives personalization in generated wheel/report artifacts. If omitted in CLI usage, fallback order is active profile name then `OPASTRO`.
 - Alias route: `POST /natal-birthchart-report`.
 - Response includes `premium_insights` with:
   - dominant signature and aspect patterns,
@@ -121,9 +122,9 @@ Notes:
 All natal asset endpoints accept the same request body as `POST /natal-birthchart`.
 
 - `POST /natal-birthchart/wheel.svg`  
-  Returns `image/svg+xml` wheel chart output.
+  Returns `image/svg+xml` wheel chart output with profile context metadata and responsive legend sections.
 - `POST /natal-birthchart/wheel.png`  
-  Returns `image/png` wheel chart output.
+  Returns `image/png` wheel chart output with profile context metadata and responsive legend sections.
 - `POST /natal-birthchart/house-overlay`  
   Returns JSON house overlay map with house spans, occupants, life-area vectors, sign polarity/element percentages, and ASC/MC angle data.
 - `POST /natal-birthchart/report.pdf`  

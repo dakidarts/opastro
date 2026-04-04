@@ -78,6 +78,13 @@ For each section:
 - `intensity`
 - `factor_details[]`
 
+## Natal Artifact Rendering
+
+Natal asset rendering is deterministic and code-defined:
+- wheel exports include profile context metadata (name, birth date/time, coordinates, timezone, house system, zodiac system, generation timestamp)
+- legend sections are stacked in a responsive combined panel to keep spacing consistent across screen sizes
+- house overlay JSON includes sign polarity, element percentages, ASC/MC angle data, and house arc metadata
+
 ## Open-Core Boundary
 
 Current open-core renderer does **not** load premium meaning packs.

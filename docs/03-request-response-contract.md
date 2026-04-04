@@ -98,6 +98,7 @@ Top-level fields:
 - `report_type`: `natal_birthchart`
 - `sign` (derived from natal sun sign)
 - `birth`
+- `user_name` (optional personalization value, echoed from request/profile)
 - `snapshot` (`ChartSnapshot`)
 - `notable_events` (list of strings)
 - `premium_insights` (optional)
@@ -168,13 +169,12 @@ These endpoints reuse `NatalBirthchartRequest`:
 - `POST /natal-birthchart/wheel.svg` -> `image/svg+xml`
 - `POST /natal-birthchart/wheel.png` -> `image/png`
 - `POST /natal-birthchart/house-overlay` -> JSON map:
-- `report_type`, `sign`, `birth_date`
-- `user_name`
-  - `sign_polarity`, `element_percentages` (`fire`, `earth`, `air`, `water`)
-  - `ascendant` / `midheaven` (`sign`, `longitude`)
-  - `house_system`, `rising_sign`
-  - `houses[]` (`house`, `cusp_longitude`, `cusp_sign`, `start_longitude`, `end_longitude`, `midpoint_longitude`, `arc_degrees`, `wraps_aries`, `occupants[]`)
-  - `life_area_vectors[]` (`area`, `score`, `emphasis`, `drivers[]`)
+- `report_type`, `sign`, `birth_date`, `user_name`
+- `sign_polarity`, `element_percentages` (`fire`, `earth`, `air`, `water`)
+- `ascendant` / `midheaven` (`sign`, `longitude`)
+- `house_system`, `rising_sign`
+- `houses[]` (`house`, `cusp_longitude`, `cusp_sign`, `start_longitude`, `end_longitude`, `midpoint_longitude`, `arc_degrees`, `wraps_aries`, `occupants[]`)
+- `life_area_vectors[]` (`area`, `score`, `emphasis`, `drivers[]`)
 - `POST /natal-birthchart/report.pdf` -> `application/pdf`
 
 ## `data` (`PeriodCelestialData`)

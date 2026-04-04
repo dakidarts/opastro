@@ -189,6 +189,10 @@ opastro horoscope --period weekly --sign LEO --json
 opastro horoscope --period daily --sign ARIES --format markdown --export reports/aries.md
 ```
 
+Notes:
+- If `--user-name` is omitted, natal personalization falls back to active profile name; if none exists, it falls back to `OPASTRO`.
+- Wheel assets include a profile context block (name, birth timestamp, coordinates, timezone, house system, zodiac system, generation timestamp) and a responsive combined symbols legend.
+
 ## API
 
 Run local API:
