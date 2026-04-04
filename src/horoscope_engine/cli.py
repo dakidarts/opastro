@@ -78,9 +78,9 @@ COMMAND_ALIASES = {
 }
 
 ACCENT_RGB = (61, 221, 119)  # #3ddd77
-ACCENT_SOFT_RGB = (126, 236, 165)
-ACCENT_FADE_RGB = (97, 197, 132)
-ACCENT_DEEP_RGB = (37, 156, 85)
+ACCENT_SOFT_RGB = (148, 244, 183)
+ACCENT_FADE_RGB = (108, 230, 151)
+ACCENT_DEEP_RGB = (46, 187, 101)
 COLOR_ACCENT = f"38;2;{ACCENT_RGB[0]};{ACCENT_RGB[1]};{ACCENT_RGB[2]}"
 COLOR_ACCENT_BOLD = f"1;{COLOR_ACCENT}"
 COLOR_ACCENT_DIM = f"38;2;{ACCENT_FADE_RGB[0]};{ACCENT_FADE_RGB[1]};{ACCENT_FADE_RGB[2]}"
@@ -502,9 +502,26 @@ def _normalize_sign(value: Optional[str]) -> Optional[str]:
 
 
 def _style(text: str, code: str, *, colorize: bool = True) -> str:
-    if not colorize or not sys.stdout.isatty() or os.getenv("NO_COLOR"):
+    if not colorize or not _should_colorize():
         return text
     return f"\033[{code}m{text}\033[0m"
+
+
+def _should_colorize() -> bool:
+    if os.getenv("NO_COLOR"):
+        return False
+    mode = (os.getenv("OPASTRO_COLOR") or "").strip().lower()
+    if mode in {"never", "0", "false", "off"}:
+        return False
+    if mode in {"always", "1", "true", "on"}:
+        return True
+    force_color = (os.getenv("CLICOLOR_FORCE") or os.getenv("FORCE_COLOR") or "").strip()
+    if force_color and force_color not in {"0", "false", "False"}:
+        return True
+    term = (os.getenv("TERM") or "").strip().lower()
+    if term == "dumb":
+        return False
+    return sys.stdout.isatty()
 
 
 def _style_rgb(text: str, rgb: tuple[int, int, int], *, bold: bool = False) -> str:
