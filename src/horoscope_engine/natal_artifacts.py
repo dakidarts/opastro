@@ -438,8 +438,12 @@ def build_natal_wheel_svg(
         f"Generated: {generation_text}",
     ]
 
-    metadata_block_h = 24.0 + (len(metadata_lines) * 15.0)
-    planet_header_y = planet_card_y + metadata_block_h + 8.0
+    metadata_title_y = planet_card_y + 22.0
+    metadata_first_line_y = metadata_title_y + 20.0
+    metadata_line_h = 15.0
+    metadata_last_line_y = metadata_first_line_y + ((len(metadata_lines) - 1) * metadata_line_h)
+    metadata_block_h = (metadata_last_line_y - planet_card_y) + 20.0
+    planet_header_y = planet_card_y + metadata_block_h + 12.0
     profile_line_count = 5
     planet_card_h = (
         metadata_block_h
@@ -464,11 +468,11 @@ def build_natal_wheel_svg(
 
     planet_rows_svg: list[str] = []
     planet_rows_svg.append(
-        f'<text x="{planet_card_x + 16:.2f}" y="{planet_card_y + 22:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
+        f'<text x="{planet_card_x + 16:.2f}" y="{metadata_title_y:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
         f'fill="{accent_color}" font-weight="700">Profile Context</text>'
     )
     for idx, line in enumerate(metadata_lines):
-        y = planet_card_y + 42 + (idx * 15)
+        y = metadata_first_line_y + (idx * metadata_line_h)
         planet_rows_svg.append(
             f'<text x="{planet_card_x + 16:.2f}" y="{y:.2f}" font-size="11.6" font-family="{TEXT_FONT_STACK}" fill="#c9d8ef">{line}</text>'
         )
