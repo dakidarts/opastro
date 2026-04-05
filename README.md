@@ -46,10 +46,12 @@ opastro horoscope --period daily --sign ARIES --target-date 2026-04-03 --format 
 
 ## Open Core vs Premium
 
-| Product | Includes | Best For |
-|---|---|---|
-| `opastro` (this repo) | Open calculations, deterministic engine, lite meanings, installable CLI, local API | Developers building local tools, prototypes, integrations, and transparent workflows |
-| [numerologyapi.com](https://numerologyapi.com) | Premium narrative depth, richer editorial packs, production-grade premium reading flows | Apps and businesses needing deeper reading content and premium user-facing experiences |
+| Product | Calculation Engine | Editorial Layer | Dataset Scale | Delivery Surface | Best For |
+|---|---|---|---|---|---|
+| `opastro` (this repo) | Deterministic open calculations (Swiss Ephemeris), explainable factor scoring | Lightweight built-in meanings (open-core) | Compact in-repo rule/content set | Python library, `opastro` CLI, local FastAPI | Developers shipping local tools, prototypes, and transparent astrology workflows |
+| [numerologyapi.com](https://numerologyapi.com) | Same core precision + production-grade premium tuning | Rich premium editorial narrative packs | **Editorial dataset: `716,398` entries** (`3.4G`) | Managed premium API + deeper reading outputs | Teams/apps needing high-depth user-facing readings and premium narrative quality at scale |
+
+Open-core gives you transparent calculations and full developer control. Premium adds the large editorial intelligence layer for deeper storytelling and production content depth.
 
 ## What Is Open Here
 
