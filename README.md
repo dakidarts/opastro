@@ -293,25 +293,6 @@ python3 -m pip install -e ".[dev]"
 PYTHONPATH=src python3 -m pytest -q
 ```
 
-## Build And Publish (PyPI)
-
-```bash
-# One-time tooling
-python3 -m pip install -U build twine
-
-# Clean old artifacts
-rm -rf dist build src/*.egg-info
-
-# Build wheel + sdist
-python3 -m build
-
-# Validate package metadata/rendering
-python3 -m twine check dist/*
-
-# Production upload
-python3 -m twine upload dist/*
-```
-
 ## Docs
 
 Start here: [docs/README.md](https://github.com/dakidarts/opastro/blob/main/docs/README.md)
