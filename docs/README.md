@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://opastro.com">
-    <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1775313441/cover_gh1cdn.jpg" alt="OpAstro Banner" />
+    <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1775556782/X-COVER_kfq8p8.jpg" alt="OpAstro Banner" />
   </a>
 </p>
 
