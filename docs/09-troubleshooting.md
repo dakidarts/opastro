@@ -59,9 +59,13 @@ opastro doctor
 Auto-remediation:
 
 ```bash
+opastro doctor --json
 opastro doctor --fix --dry-run
 opastro doctor --fix
 ```
+
+Note:
+- `opastro doctor --json` is useful for CI and machine-readable diagnostics.
 
 ### Inspecting uncaught CLI runtime errors
 

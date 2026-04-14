@@ -32,8 +32,10 @@ PYTHONPATH=src python3 -m pytest -q tests/test_healthcheck.py
 
 ```bash
 opastro
+opastro init --template natal
 opastro catalog
 opastro doctor
+opastro doctor --json
 opastro doctor --fix --dry-run
 opastro profile list
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
@@ -64,6 +66,15 @@ curl http://127.0.0.1:8000/metrics
 python3 -m pip install -e .
 opastro --help
 ```
+
+## Release CI
+
+GitHub release automation runs on tag pushes matching `v*`:
+- validates tag version against `setup.cfg`
+- runs full tests
+- builds wheel + sdist
+- runs `twine check`
+- uploads built artifacts to workflow and GitHub release
 
 ## Contribution Guardrails
 

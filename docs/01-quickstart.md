@@ -52,6 +52,7 @@ This opens the main welcome UI with command overview.
 
 ```bash
 opastro init
+opastro init --template natal
 opastro profile list
 opastro profile save --name natal --set-active --user-name "Dakidarts" --wheel-theme day --accent "#3ddd77"
 ```
@@ -155,6 +156,7 @@ curl -X POST http://127.0.0.1:8000/horoscope \
 
 ```bash
 opastro doctor
+opastro doctor --json
 opastro logger show --limit 5
 ```
 

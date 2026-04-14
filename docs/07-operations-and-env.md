@@ -21,6 +21,7 @@
 | `CONTENT_HEALTHCHECK_DISABLE` | `0` | `1` disables startup content checks |
 | `CONTENT_HEALTHCHECK_FAIL_FAST` | `0` | `1` raises startup error when content checks fail |
 | `PREGEN_TOKEN` | unset | Token guard for `/admin/pregenerate` |
+| `OPASTRO_ANALYTICS` | `0` | Opt-in local anonymous CLI analytics events (`1` enables) |
 
 ## Cache Behavior
 
@@ -32,9 +33,13 @@
 ```bash
 # CLI doctor
 opastro doctor
+opastro doctor --json
 
 # Runtime logger
 opastro logger show --limit 10
+
+# Opt-in analytics
+OPASTRO_ANALYTICS=1 opastro catalog
 
 # Run API
 opastro serve --host 127.0.0.1 --port 8000 --reload

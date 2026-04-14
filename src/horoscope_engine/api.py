@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 import logging
 import os
 from pathlib import Path
@@ -33,7 +34,6 @@ from .service import HoroscopeService
 from .versioning import resolve_version
 
 
-app = FastAPI(title="OpAstro Engine API", version=resolve_version("opastro"))
 logger = logging.getLogger(__name__)
 
 service_config = ServiceConfig()
@@ -42,8 +42,7 @@ cache = cache_from_env(service_config.cache_ttl_seconds)
 metrics = MetricsCollector()
 
 
-@app.on_event("startup")
-async def startup_content_healthcheck() -> None:
+def _run_startup_content_healthcheck() -> None:
     if os.getenv("CONTENT_HEALTHCHECK_DISABLE", "0") == "1":
         return
     if service.content_repository is None:
@@ -58,6 +57,15 @@ async def startup_content_healthcheck() -> None:
         logger.warning("content-healthcheck: %s", issue)
     if issues and os.getenv("CONTENT_HEALTHCHECK_FAIL_FAST", "0") == "1":
         raise RuntimeError("Content healthcheck failed")
+
+
+@asynccontextmanager
+async def _lifespan(_: FastAPI):
+    _run_startup_content_healthcheck()
+    yield
+
+
+app = FastAPI(title="OpAstro Engine API", version=resolve_version("opastro"), lifespan=_lifespan)
 
 
 @app.get("/health")

@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import time
 import traceback
 from typing import Any, Optional
 
@@ -90,6 +91,28 @@ COLOR_ACCENT_DIM = f"38;2;{ACCENT_FADE_RGB[0]};{ACCENT_FADE_RGB[1]};{ACCENT_FADE
 COLOR_ACCENT_SOFT = f"38;2;{ACCENT_SOFT_RGB[0]};{ACCENT_SOFT_RGB[1]};{ACCENT_SOFT_RGB[2]}"
 COLOR_ACCENT_DEEP = f"38;2;{ACCENT_DEEP_RGB[0]};{ACCENT_DEEP_RGB[1]};{ACCENT_DEEP_RGB[2]}"
 RUNTIME_LOG_FILENAME = "runtime-errors.log"
+ANALYTICS_LOG_FILENAME = "analytics-events.log"
+INIT_TEMPLATES: dict[str, dict[str, Any]] = {
+    "api": {
+        "output_format": "json",
+        "tenant_id": "public-api",
+        "zodiac_system": "tropical",
+    },
+    "cli": {
+        "output_format": "text",
+        "sections": ["general", "career", "money"],
+        "zodiac_system": "tropical",
+    },
+    "natal": {
+        "wheel_theme": "day",
+        "accent": "#3ddd77",
+        "brand_title": "OPASTRO",
+        "brand_url": "https://opastro.com",
+        "premium_url": "https://numerologyapi.com",
+        "output_format": "markdown",
+        "zodiac_system": "tropical",
+    },
+}
 
 
 class OpastroArgumentParser(argparse.ArgumentParser):
@@ -176,6 +199,11 @@ def _build_base_parser() -> argparse.ArgumentParser:
         default=DEFAULT_PROFILE_NAME,
         help=f"Profile name to create/update (default: {DEFAULT_PROFILE_NAME}).",
     )
+    init.add_argument(
+        "--template",
+        choices=sorted(INIT_TEMPLATES),
+        help="Starter template presets: api, cli, natal.",
+    )
     init.set_defaults(handler=_handle_init)
 
     welcome = subparsers.add_parser(
@@ -200,6 +228,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
         help="Run local environment diagnostics for Opastro.",
         description="Check Python runtime, executable path, and key engine readiness flags.",
     )
+    doctor.add_argument("--json", action="store_true", help="Output diagnostics as JSON for CI/automation.")
     doctor.add_argument("--fix", action="store_true", help="Attempt automatic fixes for detected dependency/runtime gaps.")
     doctor.add_argument("--dry-run", action="store_true", help="Show fix commands without executing them.")
     doctor.set_defaults(handler=_handle_doctor)
@@ -1664,77 +1693,223 @@ def _dependency_health() -> tuple[list[str], list[str]]:
     return missing, ok
 
 
-def _doctor_fix(args: argparse.Namespace) -> None:
+def _doctor_fix(*, dry_run: bool, emit_text: bool = True) -> dict[str, Any]:
     command = [sys.executable, "-m", "pip", "install", "-e", ".[dev]"]
-    if args.dry_run:
-        print(f"Fix plan      : {' '.join(command)}")
-        return
-    print("Applying fix  : Installing project dependencies...")
+    payload: dict[str, Any] = {
+        "requested": True,
+        "dry_run": bool(dry_run),
+        "command": command,
+    }
+    if dry_run:
+        payload["status"] = "planned"
+        if emit_text:
+            print(f"Fix plan      : {' '.join(command)}")
+        return payload
+    if emit_text:
+        print("Applying fix  : Installing project dependencies...")
     result = subprocess.run(command, capture_output=True, text=True, check=False)
+    payload["status"] = "ok" if result.returncode == 0 else "warn"
+    payload["returncode"] = result.returncode
     if result.returncode == 0:
-        print(_style("Fix result    : OK (dependencies installed)", "1;32"))
+        if emit_text:
+            print(_style("Fix result    : OK (dependencies installed)", "1;32"))
     else:
-        print(_style(f"Fix result    : WARN (pip exited {result.returncode})", "1;33"))
         stderr_preview = "\n".join(result.stderr.splitlines()[-5:])
+        payload["stderr_preview"] = stderr_preview
+        if emit_text:
+            print(_style(f"Fix result    : WARN (pip exited {result.returncode})", "1;33"))
         if stderr_preview:
-            print(stderr_preview)
+            if emit_text:
+                print(stderr_preview)
+    return payload
 
 
 def _handle_doctor(args: argparse.Namespace) -> int:
     cfg = ServiceConfig()
-    _print_heading("OPASTRO DOCTOR")
-    _print_divider()
-    print(f"Python version : {platform.python_version()}")
-    print(f"Python exec    : {sys.executable}")
-    print(f"Platform       : {platform.platform()}")
-    print(f"Ephemeris path : {cfg.ephemeris.ephemeris_path or 'auto/not-set'}")
-    print(f"Zodiac system  : {cfg.ephemeris.zodiac_system}")
-    print(f"Ayanamsa       : {cfg.ephemeris.ayanamsa_system}")
+    if not args.json:
+        _print_heading("OPASTRO DOCTOR")
+        _print_divider()
+        print(f"Python version : {platform.python_version()}")
+        print(f"Python exec    : {sys.executable}")
+        print(f"Platform       : {platform.platform()}")
+        print(f"Ephemeris path : {cfg.ephemeris.ephemeris_path or 'auto/not-set'}")
+        print(f"Zodiac system  : {cfg.ephemeris.zodiac_system}")
+        print(f"Ayanamsa       : {cfg.ephemeris.ayanamsa_system}")
     in_venv = sys.prefix != sys.base_prefix
-    print(f"Virtual env    : {'yes' if in_venv else 'no'}")
+    if not args.json:
+        print(f"Virtual env    : {'yes' if in_venv else 'no'}")
 
     required = f"{MIN_PYTHON_VERSION[0]}.{MIN_PYTHON_VERSION[1]}+"
     runtime_ok = sys.version_info >= MIN_PYTHON_VERSION
-    if sys.version_info >= MIN_PYTHON_VERSION:
-        print(_style(f"Runtime check  : OK (Python {required} requirement satisfied)", "1;32"))
-    else:
-        current = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-        print(_style(f"Runtime check  : WARN (running {current}; requires {required})", "1;33"))
-        print("Recommendation : Use a Python 3.11+ virtual environment and reinstall opastro.")
+    if not args.json:
+        if sys.version_info >= MIN_PYTHON_VERSION:
+            print(_style(f"Runtime check  : OK (Python {required} requirement satisfied)", "1;32"))
+        else:
+            current = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+            print(_style(f"Runtime check  : WARN (running {current}; requires {required})", "1;33"))
+            print("Recommendation : Use a Python 3.11+ virtual environment and reinstall opastro.")
 
     missing_deps, ok_deps = _dependency_health()
-    print(f"Deps loaded    : {', '.join(ok_deps) if ok_deps else 'none'}")
-    if missing_deps:
-        print(_style(f"Deps missing   : {', '.join(missing_deps)}", "1;33"))
-    else:
-        print(_style("Deps check     : OK", "1;32"))
+    if not args.json:
+        print(f"Deps loaded    : {', '.join(ok_deps) if ok_deps else 'none'}")
+        if missing_deps:
+            print(_style(f"Deps missing   : {', '.join(missing_deps)}", "1;33"))
+        else:
+            print(_style("Deps check     : OK", "1;32"))
+
+    payload: dict[str, Any] = {
+        "python_version": platform.python_version(),
+        "python_executable": sys.executable,
+        "platform": platform.platform(),
+        "ephemeris_path": cfg.ephemeris.ephemeris_path or "auto/not-set",
+        "zodiac_system": str(cfg.ephemeris.zodiac_system),
+        "ayanamsa": str(cfg.ephemeris.ayanamsa_system),
+        "virtual_env": in_venv,
+        "runtime_ok": runtime_ok,
+        "runtime_required": required,
+        "dependencies": {
+            "loaded": ok_deps,
+            "missing": missing_deps,
+            "ok": not missing_deps,
+        },
+        "fix": {"requested": bool(args.fix), "dry_run": bool(args.dry_run)},
+    }
+    if not runtime_ok:
+        payload["runtime_recommendation"] = "Use a Python 3.11+ virtual environment and reinstall opastro."
 
     if args.fix:
         if not in_venv and not args.dry_run:
+            payload["fix"] = {
+                "requested": True,
+                "dry_run": False,
+                "blocked": True,
+                "reason": "outside_virtualenv",
+                "recommendation": "Create a venv first, then run `opastro doctor --fix`.",
+            }
+            if args.json:
+                print(json.dumps(payload, indent=2, sort_keys=True))
+                return 0
             print(_style("Fix blocked   : Refusing to install outside a virtual environment.", "1;33"))
             print("Recommendation : Create a venv first, then run `opastro doctor --fix`.")
             return 0
 
-        _doctor_fix(args)
+        payload["fix"] = _doctor_fix(dry_run=args.dry_run, emit_text=not args.json)
         if not args.dry_run:
             after_missing, _ = _dependency_health()
+            payload["post_fix"] = {
+                "missing": after_missing,
+                "ok": not after_missing,
+            }
             if not after_missing:
-                print(_style("Post-fix check : OK", "1;32"))
+                if not args.json:
+                    print(_style("Post-fix check : OK", "1;32"))
             else:
-                print(_style(f"Post-fix check : WARN (still missing: {', '.join(after_missing)})", "1;33"))
+                if not args.json:
+                    print(_style(f"Post-fix check : WARN (still missing: {', '.join(after_missing)})", "1;33"))
     elif missing_deps or not runtime_ok:
-        print("Suggestion     : Run `opastro doctor --fix --dry-run` to preview automatic remediation.")
+        payload["suggestion"] = "Run `opastro doctor --fix --dry-run` to preview automatic remediation."
+        if not args.json:
+            print("Suggestion     : Run `opastro doctor --fix --dry-run` to preview automatic remediation.")
+
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
 
     return 0
 
 
-def _runtime_log_path() -> Path:
+def _config_dir() -> Path:
     override = os.getenv("OPASTRO_CONFIG_DIR")
     if override:
-        base = Path(override).expanduser()
-    else:
-        base = Path.home() / ".config" / "opastro"
-    return base / RUNTIME_LOG_FILENAME
+        return Path(override).expanduser()
+    return Path.home() / ".config" / "opastro"
+
+
+def _runtime_log_path() -> Path:
+    return _config_dir() / RUNTIME_LOG_FILENAME
+
+
+def _analytics_log_path() -> Path:
+    return _config_dir() / ANALYTICS_LOG_FILENAME
+
+
+def _analytics_enabled() -> bool:
+    mode = (os.getenv("OPASTRO_ANALYTICS") or "").strip().lower()
+    return mode in {"1", "true", "on", "yes", "enabled"}
+
+
+def _canonical_command_name(token: Optional[str]) -> str:
+    if not token:
+        return "welcome"
+    if token.startswith("-"):
+        return "root"
+    if token in COMMAND_ALIASES:
+        return token
+    for command, aliases in COMMAND_ALIASES.items():
+        if token in aliases:
+            return command
+    return token
+
+
+def _failure_category_for_exception(exc: Exception) -> str:
+    if isinstance(exc, ValueError):
+        return "validation"
+    if isinstance(exc, (ModuleNotFoundError, ImportError)):
+        return "dependency"
+    if isinstance(exc, PermissionError):
+        return "permission"
+    if isinstance(exc, FileNotFoundError):
+        return "filesystem"
+    if isinstance(exc, RuntimeError):
+        return "runtime"
+    return "unknown"
+
+
+def _record_analytics_event(
+    *,
+    command: str,
+    exit_code: int,
+    duration_ms: int,
+    failure_category: Optional[str] = None,
+) -> None:
+    if not _analytics_enabled():
+        return
+    payload: dict[str, Any] = {
+        "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
+        "opastro_version": _app_version(),
+        "python_major_minor": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "command": command,
+        "exit_code": int(exit_code),
+        "status": "ok" if int(exit_code) == 0 else "error",
+        "duration_ms": max(0, int(duration_ms)),
+    }
+    if failure_category:
+        payload["failure_category"] = failure_category
+    try:
+        target = _analytics_log_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, ensure_ascii=True, sort_keys=True))
+            handle.write("\n")
+    except Exception:
+        # Analytics should never block command execution.
+        return
+
+
+def _analytics_exit(
+    *,
+    command: str,
+    started_at: float,
+    exit_code: int,
+    failure_category: Optional[str] = None,
+) -> int:
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    _record_analytics_event(
+        command=command,
+        exit_code=exit_code,
+        duration_ms=elapsed_ms,
+        failure_category=failure_category,
+    )
+    return exit_code
 
 
 def _dedupe_lines(values: list[str]) -> list[str]:
@@ -1961,6 +2136,27 @@ def _validate_sections(values: Optional[list[str]]) -> Optional[list[str]]:
     return cleaned or None
 
 
+def _init_defaults(existing: dict[str, Any], template_name: Optional[str], detected_tz: str) -> dict[str, Any]:
+    defaults = dict(existing)
+    if not template_name:
+        return defaults
+    template = INIT_TEMPLATES.get(template_name, {})
+    for key, value in template.items():
+        if key == "sections":
+            if not defaults.get("sections"):
+                defaults["sections"] = list(value) if isinstance(value, list) else value
+            continue
+        if defaults.get(key) in (None, "", []):
+            defaults[key] = value
+    birth = defaults.get("birth")
+    if template_name == "natal":
+        if not isinstance(birth, dict):
+            birth = {}
+        birth.setdefault("timezone", detected_tz)
+        defaults["birth"] = birth
+    return defaults
+
+
 def _profile_payload_from_args(
     args: argparse.Namespace,
     *,
@@ -2070,14 +2266,17 @@ def _handle_init(args: argparse.Namespace) -> int:
     store = ProfileStore()
     existing = store.get_profile(args.profile) or {}
     detected_tz = _detect_local_timezone()
+    defaults = _init_defaults(existing, getattr(args, "template", None), detected_tz)
 
     _print_heading("OPASTRO INIT")
     _print_divider()
     print(_wrap("Interactive onboarding to save your default profile for repeat report commands."))
+    if args.template:
+        print(_wrap(f"Starter template loaded: {args.template}"))
 
-    user_name = _prompt_text("Default display name for natal charts (optional)", existing.get("user_name"))
+    user_name = _prompt_text("Default display name for natal charts (optional)", defaults.get("user_name"))
 
-    sign_default = existing.get("sign")
+    sign_default = defaults.get("sign")
     while True:
         sign_raw = _prompt_text("Default sign (optional)", sign_default)
         if not sign_raw:
@@ -2089,7 +2288,7 @@ def _handle_init(args: argparse.Namespace) -> int:
         except ValueError as exc:
             print(f"error: {exc}")
 
-    birth_existing = existing.get("birth") or {}
+    birth_existing = defaults.get("birth") or {}
     wants_birth = _prompt_bool("Save default birth details", default=bool(birth_existing))
 
     birth_date = None
@@ -2107,21 +2306,28 @@ def _handle_init(args: argparse.Namespace) -> int:
         timezone = _prompt_text("Timezone", birth_existing.get("timezone") or detected_tz)
         lat = float(lat_raw) if lat_raw else None
         lon = float(lon_raw) if lon_raw else None
+        if not (birth_date or "").strip():
+            # Keep onboarding forgiving: if birth date is omitted, treat birth defaults as not set.
+            birth_date = None
+            birth_time = None
+            lat = None
+            lon = None
+            timezone = None
 
-    sections_default = ",".join(existing.get("sections", [])) if existing.get("sections") else None
+    sections_default = ",".join(defaults.get("sections", [])) if defaults.get("sections") else None
     sections = _prompt_text("Default sections comma list (optional)", sections_default)
-    output_format = _prompt_text("Default output format (text/json/markdown/html)", existing.get("output_format", "text"))
+    output_format = _prompt_text("Default output format (text/json/markdown/html)", defaults.get("output_format", "text"))
 
-    zodiac_system = _prompt_text("Default zodiac system (optional)", existing.get("zodiac_system"))
-    ayanamsa = _prompt_text("Default ayanamsa (optional)", existing.get("ayanamsa"))
-    house_system = _prompt_text("Default house system (optional)", existing.get("house_system"))
-    node_type = _prompt_text("Default node type (optional)", existing.get("node_type"))
-    tenant_id = _prompt_text("Default tenant id (optional)", existing.get("tenant_id"))
-    wheel_theme = _prompt_text("Default natal wheel theme (night/day, optional)", existing.get("wheel_theme"))
-    accent = _prompt_text("Default natal accent hex (optional)", existing.get("accent"))
-    brand_title = _prompt_text("Default natal brand title (optional)", existing.get("brand_title"))
-    brand_url = _prompt_text("Default natal brand URL (optional)", existing.get("brand_url"))
-    premium_url = _prompt_text("Default natal premium URL (optional)", existing.get("premium_url"))
+    zodiac_system = _prompt_text("Default zodiac system (optional)", defaults.get("zodiac_system"))
+    ayanamsa = _prompt_text("Default ayanamsa (optional)", defaults.get("ayanamsa"))
+    house_system = _prompt_text("Default house system (optional)", defaults.get("house_system"))
+    node_type = _prompt_text("Default node type (optional)", defaults.get("node_type"))
+    tenant_id = _prompt_text("Default tenant id (optional)", defaults.get("tenant_id"))
+    wheel_theme = _prompt_text("Default natal wheel theme (night/day, optional)", defaults.get("wheel_theme"))
+    accent = _prompt_text("Default natal accent hex (optional)", defaults.get("accent"))
+    brand_title = _prompt_text("Default natal brand title (optional)", defaults.get("brand_title"))
+    brand_url = _prompt_text("Default natal brand URL (optional)", defaults.get("brand_url"))
+    premium_url = _prompt_text("Default natal premium URL (optional)", defaults.get("premium_url"))
 
     profile_args = argparse.Namespace(
         user_name=user_name or None,
@@ -2621,9 +2827,12 @@ def _suggest_command(token: str) -> str:
 
 def main(argv: Optional[list[str]] = None) -> int:
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
+    started_at = time.perf_counter()
+    analytics_command = _canonical_command_name(raw_argv[0] if raw_argv else None)
     parser = _build_base_parser()
     if not raw_argv:
-        return _show_welcome()
+        code = _show_welcome()
+        return _analytics_exit(command="welcome", started_at=started_at, exit_code=code)
 
     # UX shorthand: allow `opastro logger --limit 5` to behave like
     # `opastro logger show --limit 5` while preserving `logger --help`.
@@ -2638,17 +2847,35 @@ def main(argv: Optional[list[str]] = None) -> int:
     first = raw_argv[0]
     if not first.startswith("-") and first not in _known_command_tokens():
         print(_suggest_command(first), file=sys.stderr)
-        return 2
+        return _analytics_exit(
+            command=analytics_command,
+            started_at=started_at,
+            exit_code=2,
+            failure_category="unknown_command",
+        )
 
     try:
         args = parser.parse_args(raw_argv)
     except SystemExit as exc:
-        return int(exc.code)
+        code = int(exc.code)
+        return _analytics_exit(
+            command=analytics_command,
+            started_at=started_at,
+            exit_code=code,
+            failure_category="argparse" if code else None,
+        )
     try:
+        analytics_command = _canonical_command_name(getattr(args, "command", analytics_command))
         if hasattr(args, "handler"):
-            return args.handler(args)
-        parser.error(f"Unsupported command: {args.command}")
-        return 2
+            code = int(args.handler(args))
+            return _analytics_exit(command=analytics_command, started_at=started_at, exit_code=code)
+        print(f"error: Unsupported command: {args.command}", file=sys.stderr)
+        return _analytics_exit(
+            command=analytics_command,
+            started_at=started_at,
+            exit_code=2,
+            failure_category="unsupported_command",
+        )
     except Exception as exc:
         entry = _serialize_runtime_error(raw_argv, exc)
         log_path = _append_runtime_error_log(entry)
@@ -2658,7 +2885,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         if log_path is not None:
             print(f"runtime log: {log_path}", file=sys.stderr)
         print("inspect logs: opastro logger show --limit 5", file=sys.stderr)
-        return 2
+        return _analytics_exit(
+            command=analytics_command,
+            started_at=started_at,
+            exit_code=2,
+            failure_category=_failure_category_for_exception(exc),
+        )
 
 
 if __name__ == "__main__":

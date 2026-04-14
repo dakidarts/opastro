@@ -98,7 +98,7 @@ opastro
 | Command | Description |
 |---|---|
 | `opastro` | Main welcome UI with OPASTRO ASCII banner + quick start |
-| `opastro init` | Interactive onboarding to create/update a default profile |
+| `opastro init` | Interactive onboarding to create/update a default profile (`--template api|cli|natal`) |
 | `opastro profile ...` | Manage saved profiles (`save`, `list`, `show`, `use`) |
 | `opastro welcome` | Show welcome UI explicitly |
 | `opastro catalog` | List periods, sections, signs, and planets |
@@ -142,6 +142,7 @@ Global flags:
 ```bash
 # Interactive setup (creates active default profile)
 opastro init
+opastro init --template natal
 
 # Save profile defaults without prompts
 opastro profile save --name work --sign ARIES --format markdown --set-active
@@ -266,6 +267,7 @@ curl -X POST http://127.0.0.1:8000/natal-birthchart \
 | `CONTENT_HEALTHCHECK_DISABLE` | `0` | Skip startup content/schema check |
 | `CONTENT_HEALTHCHECK_FAIL_FAST` | `0` | Raise startup error when health check issues are found |
 | `PREGEN_TOKEN` | unset | Protect `/admin/pregenerate` with `X-Admin-Token` |
+| `OPASTRO_ANALYTICS` | `0` (disabled) | Opt-in local anonymous CLI analytics (`1` enables) |
 
 ## Developer UX Extras
 
@@ -273,12 +275,18 @@ curl -X POST http://127.0.0.1:8000/natal-birthchart \
 # Diagnose and preview auto-fixes
 opastro doctor --fix --dry-run
 
+# Machine-readable diagnostics for CI/tooling
+opastro doctor --json
+
 # Apply auto-fixes (installs editable package + deps)
 opastro doctor --fix
 
 # Runtime error logs (captured from uncaught CLI errors)
 opastro logger show --limit 20
 opastro logger clear
+
+# Opt-in anonymous local analytics
+OPASTRO_ANALYTICS=1 opastro catalog
 
 # Generate shell completions
 opastro completion --shell bash
