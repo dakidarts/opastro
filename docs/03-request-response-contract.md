@@ -166,7 +166,7 @@ Fields:
 ## Natal Asset Contracts
 
 These endpoints reuse `NatalBirthchartRequest`:
-- `POST /natal-birthchart/wheel.svg` -> `image/svg+xml` (optional query: `theme=night|day`)
+- `POST /natal-birthchart/wheel.svg` -> `image/svg+xml` (optional query: `theme=night|day`, optional `split=true` for JSON parts response)
 - `POST /natal-birthchart/wheel.png` -> `image/png` (optional query: `theme=night|day`)
 - `POST /natal-birthchart/house-overlay` -> JSON map:
 - `report_type`, `sign`, `birth_date`, `user_name`

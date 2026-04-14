@@ -628,30 +628,120 @@ def build_natal_wheel_svg(
   {background}
   <rect x="0" y="0" width="{width}" height="{height}" fill="url(#wheelBg)" />
 
-  <rect x="{planet_card_x:.2f}" y="{planet_card_y:.2f}" width="{planet_card_w:.2f}" height="{planet_card_h:.2f}" rx="14" fill="{palette["panel_fill"]}" opacity="{palette["panel_opacity"]:.2f}" />
-  <rect x="{legend_card_x:.2f}" y="{legend_card_y:.2f}" width="{legend_card_w:.2f}" height="{legend_card_h:.2f}" rx="14" fill="{palette["panel_fill"]}" opacity="{palette["panel_opacity"]:.2f}" />
+  <g id="main-wheel">
+    <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_outer:.2f}" fill="none" stroke="{accent_color}" stroke-width="3.1" />
+    <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner:.2f}" fill="none" stroke="{palette["ring_inner"]}" stroke-width="2.3" />
+    <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner * 0.63:.2f}" fill="{palette["center_fill"]}" stroke="{palette["center_stroke"]}" stroke-width="1.0" opacity="0.95" />
 
-  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_outer:.2f}" fill="none" stroke="{accent_color}" stroke-width="3.1" />
-  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner:.2f}" fill="none" stroke="{palette["ring_inner"]}" stroke-width="2.3" />
-  <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner * 0.63:.2f}" fill="{palette["center_fill"]}" stroke="{palette["center_stroke"]}" stroke-width="1.0" opacity="0.95" />
+    {''.join(sign_lines)}
+    {''.join(house_lines)}
+    {''.join(sign_labels)}
+    {''.join(house_labels)}
+    {''.join(aspect_lines)}
+    {''.join(points)}
+    {''.join(point_labels)}
+    {''.join(angle_marks)}
 
-  {''.join(sign_lines)}
-  {''.join(house_lines)}
-  {''.join(sign_labels)}
-  {''.join(house_labels)}
-  {''.join(aspect_lines)}
-  {''.join(points)}
-  {''.join(point_labels)}
-  {''.join(angle_marks)}
+    <text x="{width * 0.06:.2f}" y="{(top_margin + 18):.2f}" font-size="44" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{display_name}</text>
+    <text x="{width * 0.06:.2f}" y="{(top_margin + 44):.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="{palette["subtitle"]}">{wheel_title}</text>
+  </g>
 
-  <text x="{width * 0.06:.2f}" y="{(top_margin + 18):.2f}" font-size="44" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{display_name}</text>
-  <text x="{width * 0.06:.2f}" y="{(top_margin + 44):.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="{palette["subtitle"]}">{wheel_title}</text>
-
-  {''.join(planet_rows_svg)}
-  {''.join(aspect_rows_svg)}
-  {''.join(signs_grid_svg)}
+  <g id="legends">
+    <rect x="{planet_card_x:.2f}" y="{planet_card_y:.2f}" width="{planet_card_w:.2f}" height="{planet_card_h:.2f}" rx="14" fill="{palette["panel_fill"]}" opacity="{palette["panel_opacity"]:.2f}" />
+    <rect x="{legend_card_x:.2f}" y="{legend_card_y:.2f}" width="{legend_card_w:.2f}" height="{legend_card_h:.2f}" rx="14" fill="{palette["panel_fill"]}" opacity="{palette["panel_opacity"]:.2f}" />
+    {''.join(planet_rows_svg)}
+    {''.join(aspect_rows_svg)}
+    {''.join(signs_grid_svg)}
+  </g>
 </svg>
 """
+
+
+def _extract_svg_attr(svg: str, attr: str) -> Optional[str]:
+    match = re.search(rf'{attr}="([^"]+)"', svg)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _extract_svg_defs(svg: str) -> str:
+    match = re.search(r"(<defs>.*?</defs>)", svg, flags=re.DOTALL)
+    return match.group(1) if match else ""
+
+
+def _extract_svg_group(svg: str, group_id: str) -> str:
+    pattern = rf'<g id="{re.escape(group_id)}">(.*?)</g>'
+    match = re.search(pattern, svg, flags=re.DOTALL)
+    return match.group(1).strip() if match else ""
+
+
+def _compose_svg(
+    *,
+    width: str,
+    height: str,
+    view_box: str,
+    defs_block: str,
+    body: str,
+    include_background: bool,
+) -> str:
+    bg = ""
+    if include_background:
+        bg = f'<rect x="0" y="0" width="{width}" height="{height}" fill="url(#wheelBg)" />'
+    defs = f"\n  {defs_block}" if defs_block else ""
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="{view_box}">'
+        f"{defs}\n  {bg}\n  {body}\n</svg>\n"
+    )
+
+
+def build_natal_wheel_svg_split(
+    report: NatalBirthchartResponse,
+    *,
+    accent_color: str = ACCENT_DEFAULT,
+    size: int = 1080,
+    brand_title: str = "OPASTRO",
+    user_name: Optional[str] = None,
+    theme: str = "night",
+) -> dict[str, Any]:
+    full_svg = build_natal_wheel_svg(
+        report,
+        accent_color=accent_color,
+        size=size,
+        brand_title=brand_title,
+        user_name=user_name,
+        theme=theme,
+    )
+    width = _extract_svg_attr(full_svg, "width") or str(max(760, int(size)))
+    height = _extract_svg_attr(full_svg, "height") or str(int(max(760, int(size)) * 1.06))
+    view_box = _extract_svg_attr(full_svg, "viewBox") or f"0 0 {width} {height}"
+    defs_block = _extract_svg_defs(full_svg)
+    main_group = _extract_svg_group(full_svg, "main-wheel")
+    legends_group = _extract_svg_group(full_svg, "legends")
+
+    main_svg = _compose_svg(
+        width=width,
+        height=height,
+        view_box=view_box,
+        defs_block=defs_block,
+        body=f'<g id="main-wheel">{main_group}</g>' if main_group else "",
+        include_background=True,
+    )
+    legends_svg = _compose_svg(
+        width=width,
+        height=height,
+        view_box=view_box,
+        defs_block=defs_block,
+        body=f'<g id="legends">{legends_group}</g>' if legends_group else "",
+        include_background=False,
+    )
+    return {
+        "full_svg": full_svg,
+        "main_wheel_svg": main_svg,
+        "legends_svg": legends_svg,
+        "width": int(float(width)),
+        "height": int(float(height)),
+        "theme": _resolve_wheel_theme(theme),
+    }
 
 
 def build_natal_wheel_png(

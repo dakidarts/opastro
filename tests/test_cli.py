@@ -519,6 +519,64 @@ def test_natal_command_exports_svg_png_map_pdf(tmp_path, capsys):
     assert report_pdf.read_bytes().startswith(b"%PDF")
 
 
+def test_natal_split_exports_main_and_legends(tmp_path, capsys):
+    split_dir = tmp_path / "split"
+    code = main(
+        [
+            "natal",
+            "--birth-date",
+            "2004-06-14",
+            "--birth-time",
+            "09:30",
+            "--lat",
+            "4.0511",
+            "--lon",
+            "9.7679",
+            "--timezone",
+            "Africa/Douala",
+            "--split",
+            "--split-dir",
+            str(split_dir),
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "saved output to" in captured.err
+    full_svg = split_dir / "natal-wheel.full.svg"
+    main_svg = split_dir / "natal-wheel.main.svg"
+    legends_svg = split_dir / "natal-wheel.legends.svg"
+    assert full_svg.exists()
+    assert main_svg.exists()
+    assert legends_svg.exists()
+    assert 'id="main-wheel"' in main_svg.read_text()
+    assert 'id="legends"' in legends_svg.read_text()
+
+
+def test_natal_wheel_svg_split_api_response_shape():
+    from fastapi.testclient import TestClient
+
+    from horoscope_engine.main import app
+
+    client = TestClient(app)
+    payload = {
+        "birth": {
+            "date": "2004-06-14",
+            "time": "09:30",
+            "coordinates": {"latitude": 4.0511, "longitude": 9.7679},
+            "timezone": "Africa/Douala",
+        }
+    }
+    response = client.post("/natal-birthchart/wheel.svg?theme=day&split=true", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["theme"] == "day"
+    assert data["full_svg"].lstrip().startswith("<svg")
+    assert data["main_wheel_svg"].lstrip().startswith("<svg")
+    assert data["legends_svg"].lstrip().startswith("<svg")
+    assert 'id="main-wheel"' in data["main_wheel_svg"]
+    assert 'id="legends"' in data["legends_svg"]
+
+
 def test_profile_natal_defaults_apply_to_natal_exports(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("OPASTRO_CONFIG_DIR", str(tmp_path / "cfg"))
     wheel_svg = tmp_path / "wheel-profile.svg"

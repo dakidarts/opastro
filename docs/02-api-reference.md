@@ -124,6 +124,7 @@ All natal asset endpoints accept the same request body as `POST /natal-birthchar
 - `POST /natal-birthchart/wheel.svg`  
   Returns `image/svg+xml` wheel chart output with profile context metadata and responsive legend sections.
   Optional query: `theme=night|day`.
+  Optional query: `split=true` to return JSON parts (`full_svg`, `main_wheel_svg`, `legends_svg`).
 - `POST /natal-birthchart/wheel.png`  
   Returns `image/png` wheel chart output with profile context metadata and responsive legend sections.
   Optional query: `theme=night|day`.

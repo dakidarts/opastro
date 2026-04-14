@@ -133,6 +133,8 @@ Global flags:
 - `--node-type {true,mean}`
 - `--tenant-id <id>`
 - `--wheel-theme {night,day}` (for natal SVG/PNG/PDF wheel styling)
+- `--split` (split natal wheel SVG into full/main/legends parts)
+- `--split-dir <path>` (optional export dir for split wheel parts)
 - `--json`
 - `--format {text,json,markdown,html}`
 - `--export <path>`
@@ -200,6 +202,16 @@ opastro natal \
   --house-map reports/natal-house-map.json \
   --pdf reports/natal-report.pdf
 
+# Split wheel into parts (full/main/legends)
+opastro natal \
+  --birth-date 1997-08-14 \
+  --birth-time 09:30 \
+  --lat 4.0511 \
+  --lon 9.7679 \
+  --timezone Africa/Douala \
+  --split \
+  --split-dir reports/natal-split
+
 # Raw JSON output
 opastro horoscope --period weekly --sign LEO --json
 
@@ -240,6 +252,7 @@ uvicorn horoscope_engine.main:app --host 127.0.0.1 --port 8000 --reload
 - `POST /admin/pregenerate`
 
 Natal wheel/PDF assets support optional query parameter `theme=night|day`.
+`POST /natal-birthchart/wheel.svg` also supports `split=true` to return wheel parts JSON (`full_svg`, `main_wheel_svg`, `legends_svg`).
 
 ### Minimal API Call
 

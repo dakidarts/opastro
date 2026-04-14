@@ -41,6 +41,7 @@ from .natal_artifacts import (
     build_natal_report_pdf,
     build_natal_wheel_png,
     build_natal_wheel_svg,
+    build_natal_wheel_svg_split,
 )
 from .profiles import DEFAULT_PROFILE_NAME, ProfileStore
 from .service import HoroscopeService
@@ -514,6 +515,8 @@ def _add_natal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--tenant-id", help="Tenant identifier.")
     parser.add_argument("--json", action="store_true", help="Output raw natal JSON.")
     parser.add_argument("--wheel-svg", help="Export wheel chart as SVG.")
+    parser.add_argument("--split", action="store_true", help="Split wheel SVG into parts (full/main/legends).")
+    parser.add_argument("--split-dir", help="Directory for split wheel parts when using --split.")
     parser.add_argument("--wheel-png", help="Export wheel chart as PNG.")
     parser.add_argument("--house-map", help="Export house overlay map JSON.")
     parser.add_argument("--pdf", help="Export branded natal PDF report.")
@@ -1306,9 +1309,18 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
     brand_url = args.brand_url or "https://opastro.com"
     premium_url = args.premium_url or "https://numerologyapi.com"
     wheel_theme = args.wheel_theme or "night"
+    split_payload: Optional[dict[str, Any]] = None
+    if args.split:
+        split_payload = build_natal_wheel_svg_split(
+            report,
+            accent_color=accent,
+            brand_title=brand_title,
+            user_name=getattr(args, "user_name", None),
+            theme=wheel_theme,
+        )
 
     if args.wheel_svg:
-        svg = build_natal_wheel_svg(
+        svg = split_payload["full_svg"] if split_payload else build_natal_wheel_svg(
             report,
             accent_color=accent,
             brand_title=brand_title,
@@ -1317,6 +1329,33 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
         )
         target = _save_export(svg, args.wheel_svg)
         exports.append(target)
+
+    if split_payload:
+        if args.split_dir:
+            split_dir = Path(args.split_dir).expanduser()
+            base_name = "natal-wheel"
+            if args.wheel_svg:
+                base_name = Path(args.wheel_svg).expanduser().stem
+        elif args.wheel_svg:
+            wheel_svg_path = Path(args.wheel_svg).expanduser()
+            split_dir = wheel_svg_path.parent
+            base_name = wheel_svg_path.stem
+        else:
+            split_dir = Path("reports/natal-split").expanduser()
+            base_name = "natal-wheel"
+        split_dir.mkdir(parents=True, exist_ok=True)
+
+        if not args.wheel_svg or args.split_dir:
+            full_target = split_dir / f"{base_name}.full.svg"
+            full_target.write_text(split_payload["full_svg"])
+            exports.append(full_target)
+
+        main_target = split_dir / f"{base_name}.main.svg"
+        legends_target = split_dir / f"{base_name}.legends.svg"
+        main_target.write_text(split_payload["main_wheel_svg"])
+        legends_target.write_text(split_payload["legends_svg"])
+        exports.append(main_target)
+        exports.append(legends_target)
 
     if args.wheel_png:
         png_bytes = build_natal_wheel_png(

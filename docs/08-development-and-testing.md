@@ -45,6 +45,7 @@ opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-
 opastro completion --shell bash
 opastro ui --period daily --sign ARIES --target-date 2026-04-03 --no-interactive
 opastro batch --kind horoscope --period daily --signs ARIES,TAURUS --target-date 2026-04-03 --format json
+opastro natal --birth-date 1997-08-14 --birth-time 09:30 --lat 4.0511 --lon 9.7679 --timezone Africa/Douala --split --split-dir /tmp/natal-split
 ```
 
 ## API Dev Run

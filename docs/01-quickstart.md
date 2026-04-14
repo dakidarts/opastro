@@ -138,6 +138,19 @@ opastro natal \
   --pdf reports/natal-report.pdf
 ```
 
+### Natal split wheel exports (main + legends)
+
+```bash
+opastro natal \
+  --birth-date 1997-08-14 \
+  --birth-time 09:30 \
+  --lat 4.0511 \
+  --lon 9.7679 \
+  --timezone Africa/Douala \
+  --split \
+  --split-dir reports/natal-split
+```
+
 ## Run API
 
 ```bash

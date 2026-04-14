@@ -26,6 +26,7 @@ from .natal_artifacts import (
     build_natal_report_pdf,
     build_natal_wheel_png,
     build_natal_wheel_svg,
+    build_natal_wheel_svg_split,
     build_house_overlay_map,
 )
 from .observability import MetricsCollector, Timer
@@ -254,12 +255,17 @@ def _get_natal_report(request: NatalBirthchartRequest, tenant: str | None) -> Na
 async def get_natal_wheel_svg(
     request: NatalBirthchartRequest,
     theme: str = Query(default="night", pattern="^(night|day)$"),
+    split: bool = Query(default=False),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> Response:
     timer = Timer()
     tenant = request.tenant_id or x_tenant_id
     try:
         report = _get_natal_report(request, tenant)
+        if split:
+            parts = build_natal_wheel_svg_split(report, theme=theme)
+            metrics.record_request(timer.elapsed_ms())
+            return JSONResponse(content=parts)
         svg = build_natal_wheel_svg(report, theme=theme)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
