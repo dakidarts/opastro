@@ -8,8 +8,9 @@ from horoscope_engine.cli import main
 
 def _snapshot_fingerprint(text: str) -> str:
     normalized = text.replace("\r\n", "\n")
-    normalized = re.sub(r"opastro\\s+\\d+\\.\\d+\\.\\d+", "opastro <VERSION>", normalized)
-    normalized = re.sub(r"•\\s+\\d+\\.\\d+\\.\\d+", "• <VERSION>", normalized)
+    normalized = re.sub(r"opastro\s+\d+\.\d+\.\d+", "opastro <VERSION>", normalized)
+    normalized = re.sub(r"•\s+\d+\.\d+\.\d+", "• <VERSION>", normalized)
+    normalized = re.sub(r"\b\d+\.\d+\.\d+\b", "<VERSION>", normalized)
     normalized = "\n".join(line.rstrip() for line in normalized.split("\n")).strip() + "\n"
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
@@ -406,7 +407,7 @@ def test_golden_snapshot_welcome_output(monkeypatch, capsys):
     code = main([])
     out = capsys.readouterr().out
     assert code == 0
-    assert _snapshot_fingerprint(out) == "df3bcb929962bc19266dfbd20f30fb16fc8360a3fad58ed9dc8247f7312fd530"
+    assert _snapshot_fingerprint(out) == "aff82e460f8db11080992f2a1670b17cfc5b2c35ed6b6ac43303ce193c53776f"
 
 
 def test_golden_snapshot_root_help_output(monkeypatch, capsys):
@@ -415,7 +416,7 @@ def test_golden_snapshot_root_help_output(monkeypatch, capsys):
     code = main(["--help"])
     out = capsys.readouterr().out
     assert code == 0
-    assert _snapshot_fingerprint(out) == "07d426fc577804aeee198de5c49140ac35d62a7fa78ab8e3bb62523bc14c6442"
+    assert _snapshot_fingerprint(out) == "6cbf4ee1473ce42210d7aa844ea12e069e8a5e59d41137951394f51a48e7a083"
 
 
 def test_golden_snapshot_logger_help_output(monkeypatch, capsys):

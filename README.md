@@ -67,29 +67,29 @@ Architecture graphic:
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                            Client Layer                                │
-│  (Web Apps, Mobile Apps, Third-party Integrations)                    │
+│                            Client Layer                                 │
+│  (Web Apps, Mobile Apps, Third-party Integrations)                      │
 └─────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                   API Gateway (NumerologyAPI.com)                      │
-│  Rate Limiting | Authentication | Load Balancing | SSL Termination     │
+│                   API Gateway (NumerologyAPI.com)                       │
+│  Rate Limiting | Authentication | Load Balancing | SSL Termination      │
 └─────────────────────────────────────────────────────────────────────────┘
                                       │
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                      FastAPI Application Layer                          │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │  Endpoints: /health, /horoscope, /birthday-horoscope,         │    │
-│  │             /planet-horoscope, /house-horoscope,              │    │
-│  │             /planet-house-horoscope, /aspect-horoscope,       │    │
-│  │             /transit-horoscope, /natal-birthchart,            │    │
-│  │             /natal-birthchart/svg, /metrics, /admin/pregenerate│   │
-│  │  • Request validation (Pydantic)                              │    │
-│  │  • Error handling & mapping                                   │    │
-│  │  • Cache lookup & storage                                     │    │
-│  │  • Metrics collection                                         │    │
+│  │  Endpoints: /health, /horoscope, /birthday-horoscope,           │    │
+│  │             /planet-horoscope, /house-horoscope,                │    │
+│  │             /planet-house-horoscope, /aspect-horoscope,         │    │
+│  │             /transit-horoscope, /natal-birthchart,              │    │
+│  │             /natal-birthchart/svg, /metrics, /admin/pregenerate │    │
+│  │  • Request validation (Pydantic)                                │    │
+│  │  • Error handling & mapping                                     │    │
+│  │  • Cache lookup & storage                                       │    │
+│  │  • Metrics collection                                           │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -97,12 +97,12 @@ Architecture graphic:
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                  HoroscopeService (Orchestrator)                        │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │  • Request orchestration                                      │    │
-│  │  • Sign resolution (provided vs. derived)                     │    │
-│  │  • Period range calculation                                   │    │
-│  │  • Ephemeris configuration                                    │    │
-│  │  • House enablement policy                                    │    │
-│  │  • Response assembly                                          │    │
+│  │  • Request orchestration                                        │    │
+│  │  • Sign resolution (provided vs. derived)                       │    │
+│  │  • Period range calculation                                     │    │
+│  │  • Ephemeris configuration                                      │    │
+│  │  • House enablement policy                                      │    │
+│  │  • Response assembly                                            │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────┘
            │                        │                        │
@@ -120,7 +120,7 @@ Architecture graphic:
 ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
 │  Swiss Ephemeris │    │  Period Events   │    │  V2 Content      │
 │  Data Files      │    │  (Structured)    │    │  Repository      │
-│  (.se1 files)    │    │                  │    │  (Editorial packs)│
+│  (.se1 files)    │    │                  │    │  (Editorials    )│
 └──────────────────┘    └──────────────────┘    └──────────────────┘
 ```
 
