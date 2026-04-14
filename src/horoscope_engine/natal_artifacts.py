@@ -135,6 +135,7 @@ WHEEL_THEME_PALETTES = {
         "subtitle": "#b5d6c4",
     },
 }
+SPLIT_LAYOUTS = {"stacked", "side-by-side"}
 
 
 def _symbol(codepoint: Optional[int], fallback: str = "?") -> str:
@@ -289,6 +290,13 @@ def _resolve_wheel_theme(theme: Optional[str]) -> str:
     normalized = (theme or "night").strip().lower()
     if normalized not in WHEEL_THEME_PALETTES:
         return "night"
+    return normalized
+
+
+def _resolve_split_layout(layout: Optional[str]) -> str:
+    normalized = (layout or "side-by-side").strip().lower()
+    if normalized not in SPLIT_LAYOUTS:
+        return "side-by-side"
     return normalized
 
 
@@ -677,19 +685,22 @@ def _extract_svg_group(svg: str, group_id: str) -> str:
 
 def _compose_svg(
     *,
-    width: str,
-    height: str,
+    width: float,
+    height: float,
     view_box: str,
     defs_block: str,
     body: str,
     include_background: bool,
+    background_fill: str = "url(#wheelBg)",
 ) -> str:
+    width_str = f"{width:.2f}".rstrip("0").rstrip(".")
+    height_str = f"{height:.2f}".rstrip("0").rstrip(".")
     bg = ""
     if include_background:
-        bg = f'<rect x="0" y="0" width="{width}" height="{height}" fill="url(#wheelBg)" />'
+        bg = f'<rect x="0" y="0" width="{width_str}" height="{height_str}" fill="{background_fill}" />'
     defs = f"\n  {defs_block}" if defs_block else ""
     return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="{view_box}">'
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width_str}" height="{height_str}" viewBox="{view_box}">'
         f"{defs}\n  {bg}\n  {body}\n</svg>\n"
     )
 
@@ -702,7 +713,9 @@ def build_natal_wheel_svg_split(
     brand_title: str = "OPASTRO",
     user_name: Optional[str] = None,
     theme: str = "night",
+    split_layout: str = "side-by-side",
 ) -> dict[str, Any]:
+    resolved_layout = _resolve_split_layout(split_layout)
     full_svg = build_natal_wheel_svg(
         report,
         accent_color=accent_color,
@@ -711,36 +724,139 @@ def build_natal_wheel_svg_split(
         user_name=user_name,
         theme=theme,
     )
-    width = _extract_svg_attr(full_svg, "width") or str(max(760, int(size)))
-    height = _extract_svg_attr(full_svg, "height") or str(int(max(760, int(size)) * 1.06))
-    view_box = _extract_svg_attr(full_svg, "viewBox") or f"0 0 {width} {height}"
+    width_str = _extract_svg_attr(full_svg, "width") or str(max(760, int(size)))
+    height_str = _extract_svg_attr(full_svg, "height") or str(int(max(760, int(size)) * 1.06))
+    full_width = float(width_str)
+    full_height = float(height_str)
+    full_view_box = _extract_svg_attr(full_svg, "viewBox") or f"0 0 {full_width:.2f} {full_height:.2f}"
     defs_block = _extract_svg_defs(full_svg)
     main_group = _extract_svg_group(full_svg, "main-wheel")
     legends_group = _extract_svg_group(full_svg, "legends")
 
+    legend_rects = re.findall(
+        r'<rect[^>]*x="([0-9.]+)"[^>]*y="([0-9.]+)"[^>]*width="([0-9.]+)"[^>]*height="([0-9.]+)"',
+        legends_group,
+    )
+    pad = max(10.0, full_width * 0.01)
+    if legend_rects:
+        min_x = min(float(item[0]) for item in legend_rects)
+        min_y = min(float(item[1]) for item in legend_rects)
+        max_x = max(float(item[0]) + float(item[2]) for item in legend_rects)
+        max_y = max(float(item[1]) + float(item[3]) for item in legend_rects)
+    else:
+        min_x = full_width * 0.62
+        min_y = full_width * 0.07
+        max_x = full_width * 0.95
+        max_y = full_height * 0.92
+
+    legends_x = max(0.0, min_x - pad)
+    legends_y = max(0.0, min_y - pad)
+    legends_w = min(full_width - legends_x, (max_x - min_x) + (2 * pad))
+    legends_h = min(full_height - legends_y, (max_y - min_y) + (2 * pad))
+
+    main_x = 0.0
+    main_y = 0.0
+    main_w = max(340.0, legends_x - pad)
+    main_h = full_height
+
+    main_view_box = f"{main_x:.2f} {main_y:.2f} {main_w:.2f} {main_h:.2f}"
+    legends_view_box = f"{legends_x:.2f} {legends_y:.2f} {legends_w:.2f} {legends_h:.2f}"
     main_svg = _compose_svg(
-        width=width,
-        height=height,
-        view_box=view_box,
+        width=main_w,
+        height=main_h,
+        view_box=main_view_box,
         defs_block=defs_block,
         body=f'<g id="main-wheel">{main_group}</g>' if main_group else "",
         include_background=True,
     )
     legends_svg = _compose_svg(
-        width=width,
-        height=height,
-        view_box=view_box,
+        width=legends_w,
+        height=legends_h,
+        view_box=legends_view_box,
         defs_block=defs_block,
         body=f'<g id="legends">{legends_group}</g>' if legends_group else "",
         include_background=False,
     )
+
+    gap = max(18.0, full_width * 0.02)
+    if resolved_layout == "stacked":
+        combined_w = max(main_w, legends_w)
+        combined_h = main_h + gap + legends_h
+        main_place_x = (combined_w - main_w) / 2.0
+        main_place_y = 0.0
+        legends_place_x = (combined_w - legends_w) / 2.0
+        legends_place_y = main_h + gap
+    else:
+        combined_w = main_w + gap + legends_w
+        combined_h = max(main_h, legends_h)
+        main_place_x = 0.0
+        main_place_y = (combined_h - main_h) / 2.0
+        legends_place_x = main_w + gap
+        legends_place_y = (combined_h - legends_h) / 2.0
+
+    combined_body = (
+        f'<g id="main-wheel" transform="translate({main_place_x - main_x:.2f} {main_place_y - main_y:.2f})">{main_group}</g>'
+        f'<g id="legends" transform="translate({legends_place_x - legends_x:.2f} {legends_place_y - legends_y:.2f})">{legends_group}</g>'
+    )
+    combined_svg = _compose_svg(
+        width=combined_w,
+        height=combined_h,
+        view_box=f"0 0 {combined_w:.2f} {combined_h:.2f}",
+        defs_block=defs_block,
+        body=combined_body,
+        include_background=True,
+    )
+
     return {
         "full_svg": full_svg,
         "main_wheel_svg": main_svg,
         "legends_svg": legends_svg,
-        "width": int(float(width)),
-        "height": int(float(height)),
+        "combined_svg": combined_svg,
+        "width": int(full_width),
+        "height": int(full_height),
+        "main_width": int(round(main_w)),
+        "main_height": int(round(main_h)),
+        "legends_width": int(round(legends_w)),
+        "legends_height": int(round(legends_h)),
+        "combined_width": int(round(combined_w)),
+        "combined_height": int(round(combined_h)),
         "theme": _resolve_wheel_theme(theme),
+        "split_layout": resolved_layout,
+        "full_view_box": full_view_box,
+    }
+
+
+def _svg_to_png(svg: str) -> bytes:
+    try:
+        import cairosvg
+    except Exception as exc:
+        raise RuntimeError("PNG rendering requires cairosvg. Install with `pip install cairosvg`.") from exc
+    return cairosvg.svg2png(bytestring=svg.encode("utf-8"), unsafe=True)
+
+
+def build_natal_wheel_png_split(
+    report: NatalBirthchartResponse,
+    *,
+    accent_color: str = ACCENT_DEFAULT,
+    size: int = 1080,
+    brand_title: str = "OPASTRO",
+    user_name: Optional[str] = None,
+    theme: str = "night",
+    split_layout: str = "side-by-side",
+) -> dict[str, Any]:
+    parts = build_natal_wheel_svg_split(
+        report,
+        accent_color=accent_color,
+        size=size,
+        brand_title=brand_title,
+        user_name=user_name,
+        theme=theme,
+        split_layout=split_layout,
+    )
+    return {
+        "main_wheel_png": _svg_to_png(parts["main_wheel_svg"]),
+        "legends_png": _svg_to_png(parts["legends_svg"]),
+        "combined_png": _svg_to_png(parts["combined_svg"]),
     }
 
 
@@ -753,10 +869,6 @@ def build_natal_wheel_png(
     user_name: Optional[str] = None,
     theme: str = "night",
 ) -> bytes:
-    try:
-        import cairosvg
-    except Exception as exc:
-        raise RuntimeError("PNG rendering requires cairosvg. Install with `pip install cairosvg`.") from exc
     svg = build_natal_wheel_svg(
         report,
         accent_color=accent_color,
@@ -773,12 +885,11 @@ def build_natal_wheel_png(
         vb_height = float(match.group(2))
         if vb_width > 0:
             height = max(1, int((vb_height / vb_width) * width))
-    return cairosvg.svg2png(
-        bytestring=svg.encode("utf-8"),
-        output_width=width,
-        output_height=height,
-        unsafe=True,
-    )
+    try:
+        import cairosvg
+    except Exception as exc:
+        raise RuntimeError("PNG rendering requires cairosvg. Install with `pip install cairosvg`.") from exc
+    return cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=width, output_height=height, unsafe=True)
 
 
 def build_house_overlay_map(report: NatalBirthchartResponse) -> dict[str, Any]:

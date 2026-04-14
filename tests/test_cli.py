@@ -545,11 +545,41 @@ def test_natal_split_exports_main_and_legends(tmp_path, capsys):
     full_svg = split_dir / "natal-wheel.full.svg"
     main_svg = split_dir / "natal-wheel.main.svg"
     legends_svg = split_dir / "natal-wheel.legends.svg"
+    combined_svg = split_dir / "natal-wheel.combined.svg"
     assert full_svg.exists()
     assert main_svg.exists()
     assert legends_svg.exists()
+    assert combined_svg.exists()
     assert 'id="main-wheel"' in main_svg.read_text()
     assert 'id="legends"' in legends_svg.read_text()
+
+
+def test_natal_split_png_exports(tmp_path, capsys):
+    split_dir = tmp_path / "split-png"
+    code = main(
+        [
+            "natal",
+            "--birth-date",
+            "2004-06-14",
+            "--birth-time",
+            "09:30",
+            "--lat",
+            "4.0511",
+            "--lon",
+            "9.7679",
+            "--timezone",
+            "Africa/Douala",
+            "--split-png",
+            "--split-dir",
+            str(split_dir),
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "saved output to" in captured.err
+    assert (split_dir / "natal-wheel.main.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert (split_dir / "natal-wheel.legends.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert (split_dir / "natal-wheel.combined.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_natal_wheel_svg_split_api_response_shape():
@@ -566,15 +596,82 @@ def test_natal_wheel_svg_split_api_response_shape():
             "timezone": "Africa/Douala",
         }
     }
-    response = client.post("/natal-birthchart/wheel.svg?theme=day&split=true", json=payload)
+    response = client.post(
+        "/natal-birthchart/wheel.svg?theme=day&split=true&split_layout=side-by-side",
+        json=payload,
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["theme"] == "day"
+    assert data["split_layout"] == "side-by-side"
     assert data["full_svg"].lstrip().startswith("<svg")
     assert data["main_wheel_svg"].lstrip().startswith("<svg")
     assert data["legends_svg"].lstrip().startswith("<svg")
+    assert data["combined_svg"].lstrip().startswith("<svg")
     assert 'id="main-wheel"' in data["main_wheel_svg"]
     assert 'id="legends"' in data["legends_svg"]
+    assert data["combined_width"] >= data["main_width"] + data["legends_width"]
+
+
+def test_natal_wheel_svg_split_layout_stacked_changes_dimensions():
+    from fastapi.testclient import TestClient
+
+    from horoscope_engine.main import app
+
+    client = TestClient(app)
+    payload = {
+        "birth": {
+            "date": "2004-06-14",
+            "time": "09:30",
+            "coordinates": {"latitude": 4.0511, "longitude": 9.7679},
+            "timezone": "Africa/Douala",
+        }
+    }
+    side = client.post(
+        "/natal-birthchart/wheel.svg?theme=day&split=true&split_layout=side-by-side",
+        json=payload,
+    ).json()
+    stacked = client.post(
+        "/natal-birthchart/wheel.svg?theme=day&split=true&split_layout=stacked",
+        json=payload,
+    ).json()
+    assert side["split_layout"] == "side-by-side"
+    assert stacked["split_layout"] == "stacked"
+    assert stacked["combined_height"] > side["combined_height"]
+    assert stacked["combined_width"] <= side["combined_width"]
+
+
+def test_natal_wheel_parts_zip_endpoint_contains_expected_files():
+    from io import BytesIO
+    import zipfile
+
+    from fastapi.testclient import TestClient
+
+    from horoscope_engine.main import app
+
+    client = TestClient(app)
+    payload = {
+        "birth": {
+            "date": "2004-06-14",
+            "time": "09:30",
+            "coordinates": {"latitude": 4.0511, "longitude": 9.7679},
+            "timezone": "Africa/Douala",
+        }
+    }
+    response = client.post("/natal-birthchart/wheel.parts.zip?theme=night&split_layout=stacked", json=payload)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/zip")
+    archive = zipfile.ZipFile(BytesIO(response.content))
+    names = set(archive.namelist())
+    assert "natal-wheel.full.svg" in names
+    assert "natal-wheel.main.svg" in names
+    assert "natal-wheel.legends.svg" in names
+    assert "natal-wheel.combined.svg" in names
+    assert "natal-wheel.main.png" in names
+    assert "natal-wheel.legends.png" in names
+    assert "natal-wheel.combined.png" in names
+    manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+    assert manifest["split_layout"] == "stacked"
 
 
 def test_profile_natal_defaults_apply_to_natal_exports(tmp_path, monkeypatch, capsys):

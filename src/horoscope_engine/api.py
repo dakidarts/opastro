@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from io import BytesIO
+import json
 import logging
 import os
 from pathlib import Path
+import zipfile
 
 from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.responses import Response, JSONResponse
@@ -25,6 +28,7 @@ from .models import (
 from .natal_artifacts import (
     build_natal_report_pdf,
     build_natal_wheel_png,
+    build_natal_wheel_png_split,
     build_natal_wheel_svg,
     build_natal_wheel_svg_split,
     build_house_overlay_map,
@@ -256,6 +260,7 @@ async def get_natal_wheel_svg(
     request: NatalBirthchartRequest,
     theme: str = Query(default="night", pattern="^(night|day)$"),
     split: bool = Query(default=False),
+    split_layout: str = Query(default="side-by-side", pattern="^(stacked|side-by-side)$"),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> Response:
     timer = Timer()
@@ -263,7 +268,7 @@ async def get_natal_wheel_svg(
     try:
         report = _get_natal_report(request, tenant)
         if split:
-            parts = build_natal_wheel_svg_split(report, theme=theme)
+            parts = build_natal_wheel_svg_split(report, theme=theme, split_layout=split_layout)
             metrics.record_request(timer.elapsed_ms())
             return JSONResponse(content=parts)
         svg = build_natal_wheel_svg(report, theme=theme)
@@ -292,6 +297,61 @@ async def get_natal_wheel_png(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     metrics.record_request(timer.elapsed_ms())
     return Response(content=png_bytes, media_type="image/png")
+
+
+@app.post("/natal-birthchart/wheel.parts.zip")
+async def get_natal_wheel_parts_zip(
+    request: NatalBirthchartRequest,
+    theme: str = Query(default="night", pattern="^(night|day)$"),
+    split_layout: str = Query(default="side-by-side", pattern="^(stacked|side-by-side)$"),
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> Response:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    try:
+        report = _get_natal_report(request, tenant)
+        svg_parts = build_natal_wheel_svg_split(report, theme=theme, split_layout=split_layout)
+        png_parts = build_natal_wheel_png_split(report, theme=theme, split_layout=split_layout)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    archive = BytesIO()
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("natal-wheel.full.svg", svg_parts["full_svg"])
+        zf.writestr("natal-wheel.main.svg", svg_parts["main_wheel_svg"])
+        zf.writestr("natal-wheel.legends.svg", svg_parts["legends_svg"])
+        zf.writestr("natal-wheel.combined.svg", svg_parts["combined_svg"])
+        zf.writestr("natal-wheel.main.png", png_parts["main_wheel_png"])
+        zf.writestr("natal-wheel.legends.png", png_parts["legends_png"])
+        zf.writestr("natal-wheel.combined.png", png_parts["combined_png"])
+        manifest = {
+            "theme": svg_parts["theme"],
+            "split_layout": svg_parts["split_layout"],
+            "width": svg_parts["width"],
+            "height": svg_parts["height"],
+            "main_width": svg_parts["main_width"],
+            "main_height": svg_parts["main_height"],
+            "legends_width": svg_parts["legends_width"],
+            "legends_height": svg_parts["legends_height"],
+            "combined_width": svg_parts["combined_width"],
+            "combined_height": svg_parts["combined_height"],
+            "files": [
+                "natal-wheel.full.svg",
+                "natal-wheel.main.svg",
+                "natal-wheel.legends.svg",
+                "natal-wheel.combined.svg",
+                "natal-wheel.main.png",
+                "natal-wheel.legends.png",
+                "natal-wheel.combined.png",
+            ],
+        }
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2, sort_keys=True))
+
+    metrics.record_request(timer.elapsed_ms())
+    headers = {"Content-Disposition": 'attachment; filename="opastro-natal-wheel-parts.zip"'}
+    return Response(content=archive.getvalue(), media_type="application/zip", headers=headers)
 
 
 @app.post("/natal-birthchart/house-overlay")

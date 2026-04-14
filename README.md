@@ -209,6 +209,8 @@ Global flags:
 - `--tenant-id <id>`
 - `--wheel-theme {night,day}` (for natal SVG/PNG/PDF wheel styling)
 - `--split` (split natal wheel SVG into full/main/legends parts)
+- `--split-png` (export split parts as PNG: main/legends/combined)
+- `--split-layout {stacked,side-by-side}` (presentation layout for composed split output)
 - `--split-dir <path>` (optional export dir for split wheel parts)
 - `--json`
 - `--format {text,json,markdown,html}`
@@ -287,6 +289,18 @@ opastro natal \
   --split \
   --split-dir reports/natal-split
 
+# Split wheel with modular PNG parts and stacked layout
+opastro natal \
+  --birth-date 1997-08-14 \
+  --birth-time 09:30 \
+  --lat 4.0511 \
+  --lon 9.7679 \
+  --timezone Africa/Douala \
+  --split \
+  --split-png \
+  --split-layout stacked \
+  --split-dir reports/natal-split-stacked
+
 # Raw JSON output
 opastro horoscope --period weekly --sign LEO --json
 
@@ -297,6 +311,32 @@ opastro horoscope --period daily --sign ARIES --format markdown --export reports
 Notes:
 - If `--user-name` is omitted, natal personalization falls back to active profile name; if none exists, it falls back to `OPASTRO`.
 - Wheel assets include a profile context block (name, birth timestamp, coordinates, timezone, house system, zodiac system, generation timestamp) and a responsive combined symbols legend.
+
+## Gallery: Modular Natal Wheel Outputs
+
+Use this command to generate all modular parts:
+
+```bash
+opastro natal \
+  --birth-date 1997-08-14 \
+  --birth-time 09:30 \
+  --lat 4.0511 \
+  --lon 9.7679 \
+  --timezone Africa/Douala \
+  --split \
+  --split-png \
+  --split-layout side-by-side \
+  --split-dir reports/natal-gallery
+```
+
+Generated files:
+- `natal-wheel.full.svg`
+- `natal-wheel.main.svg`
+- `natal-wheel.legends.svg`
+- `natal-wheel.combined.svg`
+- `natal-wheel.main.png`
+- `natal-wheel.legends.png`
+- `natal-wheel.combined.png`
 
 ## API
 
@@ -321,13 +361,17 @@ uvicorn horoscope_engine.main:app --host 127.0.0.1 --port 8000 --reload
 - `POST /natal-birthchart`
 - `POST /natal-birthchart/wheel.svg`
 - `POST /natal-birthchart/wheel.png`
+- `POST /natal-birthchart/wheel.parts.zip`
 - `POST /natal-birthchart/house-overlay`
 - `POST /natal-birthchart/report.pdf`
 - `GET /metrics`
 - `POST /admin/pregenerate`
 
 Natal wheel/PDF assets support optional query parameter `theme=night|day`.
-`POST /natal-birthchart/wheel.svg` also supports `split=true` to return wheel parts JSON (`full_svg`, `main_wheel_svg`, `legends_svg`).
+`POST /natal-birthchart/wheel.svg` also supports:
+- `split=true` to return wheel parts JSON (`full_svg`, `main_wheel_svg`, `legends_svg`, `combined_svg`)
+- `split_layout=stacked|side-by-side` to control composed split presentation.
+`POST /natal-birthchart/wheel.parts.zip` returns a one-click bundle with split SVG + PNG assets and `manifest.json`.
 
 ### Minimal API Call
 

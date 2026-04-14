@@ -13,6 +13,7 @@ Base URL (local): `http://127.0.0.1:8000`
 | `POST` | `/natal-birthchart` | Natal chart snapshot + sign derivation report |
 | `POST` | `/natal-birthchart/wheel.svg` | Render natal wheel as SVG |
 | `POST` | `/natal-birthchart/wheel.png` | Render natal wheel as PNG |
+| `POST` | `/natal-birthchart/wheel.parts.zip` | Download split wheel bundle (SVG + PNG + manifest) |
 | `POST` | `/natal-birthchart/house-overlay` | Return natal house overlay JSON map |
 | `POST` | `/natal-birthchart/report.pdf` | Download branded natal PDF report |
 | `GET` | `/metrics` | Request/cache metrics snapshot |
@@ -124,10 +125,15 @@ All natal asset endpoints accept the same request body as `POST /natal-birthchar
 - `POST /natal-birthchart/wheel.svg`  
   Returns `image/svg+xml` wheel chart output with profile context metadata and responsive legend sections.
   Optional query: `theme=night|day`.
-  Optional query: `split=true` to return JSON parts (`full_svg`, `main_wheel_svg`, `legends_svg`).
+  Optional query: `split=true` to return JSON parts (`full_svg`, `main_wheel_svg`, `legends_svg`, `combined_svg`).
+  Optional query: `split_layout=stacked|side-by-side` (effective when `split=true`).
 - `POST /natal-birthchart/wheel.png`  
   Returns `image/png` wheel chart output with profile context metadata and responsive legend sections.
   Optional query: `theme=night|day`.
+- `POST /natal-birthchart/wheel.parts.zip`  
+  Returns `application/zip` containing split SVG/PNG assets and `manifest.json`.
+  Optional query: `theme=night|day`.
+  Optional query: `split_layout=stacked|side-by-side`.
 - `POST /natal-birthchart/house-overlay`  
   Returns JSON house overlay map with house spans, occupants, life-area vectors, sign polarity/element percentages, and ASC/MC angle data.
 - `POST /natal-birthchart/report.pdf`  

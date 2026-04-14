@@ -40,6 +40,7 @@ from .natal_artifacts import (
     build_house_overlay_map,
     build_natal_report_pdf,
     build_natal_wheel_png,
+    build_natal_wheel_png_split,
     build_natal_wheel_svg,
     build_natal_wheel_svg_split,
 )
@@ -516,6 +517,13 @@ def _add_natal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true", help="Output raw natal JSON.")
     parser.add_argument("--wheel-svg", help="Export wheel chart as SVG.")
     parser.add_argument("--split", action="store_true", help="Split wheel SVG into parts (full/main/legends).")
+    parser.add_argument("--split-png", action="store_true", help="Export split wheel parts as PNG (main/legends/combined).")
+    parser.add_argument(
+        "--split-layout",
+        choices=["stacked", "side-by-side"],
+        default="side-by-side",
+        help="Presentation layout for split/composed wheel outputs.",
+    )
     parser.add_argument("--split-dir", help="Directory for split wheel parts when using --split.")
     parser.add_argument("--wheel-png", help="Export wheel chart as PNG.")
     parser.add_argument("--house-map", help="Export house overlay map JSON.")
@@ -1309,14 +1317,16 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
     brand_url = args.brand_url or "https://opastro.com"
     premium_url = args.premium_url or "https://numerologyapi.com"
     wheel_theme = args.wheel_theme or "night"
+    split_requested = bool(args.split or args.split_png)
     split_payload: Optional[dict[str, Any]] = None
-    if args.split:
+    if split_requested:
         split_payload = build_natal_wheel_svg_split(
             report,
             accent_color=accent,
             brand_title=brand_title,
             user_name=getattr(args, "user_name", None),
             theme=wheel_theme,
+            split_layout=args.split_layout,
         )
 
     if args.wheel_svg:
@@ -1352,10 +1362,32 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
 
         main_target = split_dir / f"{base_name}.main.svg"
         legends_target = split_dir / f"{base_name}.legends.svg"
+        combined_target = split_dir / f"{base_name}.combined.svg"
         main_target.write_text(split_payload["main_wheel_svg"])
         legends_target.write_text(split_payload["legends_svg"])
+        combined_target.write_text(split_payload["combined_svg"])
         exports.append(main_target)
         exports.append(legends_target)
+        exports.append(combined_target)
+
+        if args.split_png:
+            png_parts = build_natal_wheel_png_split(
+                report,
+                accent_color=accent,
+                brand_title=brand_title,
+                user_name=getattr(args, "user_name", None),
+                theme=wheel_theme,
+                split_layout=args.split_layout,
+            )
+            main_png_target = split_dir / f"{base_name}.main.png"
+            legends_png_target = split_dir / f"{base_name}.legends.png"
+            combined_png_target = split_dir / f"{base_name}.combined.png"
+            main_png_target.write_bytes(png_parts["main_wheel_png"])
+            legends_png_target.write_bytes(png_parts["legends_png"])
+            combined_png_target.write_bytes(png_parts["combined_png"])
+            exports.append(main_png_target)
+            exports.append(legends_png_target)
+            exports.append(combined_png_target)
 
     if args.wheel_png:
         png_bytes = build_natal_wheel_png(

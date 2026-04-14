@@ -151,6 +151,21 @@ opastro natal \
   --split-dir reports/natal-split
 ```
 
+### Natal split PNG exports with layout control
+
+```bash
+opastro natal \
+  --birth-date 1997-08-14 \
+  --birth-time 09:30 \
+  --lat 4.0511 \
+  --lon 9.7679 \
+  --timezone Africa/Douala \
+  --split \
+  --split-png \
+  --split-layout stacked \
+  --split-dir reports/natal-split-stacked
+```
+
 ## Run API
 
 ```bash
