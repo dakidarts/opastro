@@ -44,6 +44,8 @@ from .natal_artifacts import (
     build_natal_wheel_svg,
     build_natal_wheel_svg_split,
 )
+from .ephemeris import EphemerisEngine
+from .scene_renderer import build_planetary_scene_svg, build_planetary_scene_png
 from .profiles import DEFAULT_PROFILE_NAME, ProfileStore
 from .service import HoroscopeService
 from .versioning import resolve_version
@@ -81,6 +83,7 @@ COMMAND_ALIASES = {
     "completion": ["comp", "completions"],
     "ui": ["tui"],
     "batch": ["gen"],
+    "render": ["visuals"],
 }
 
 ACCENT_RGB = (61, 221, 119)  # #3ddd77
@@ -437,6 +440,35 @@ def _build_base_parser() -> argparse.ArgumentParser:
     batch.add_argument("--format", dest="output_format", choices=OUTPUT_FORMATS, default="text")
     batch.add_argument("--export-dir", help="Directory for per-item exports.")
     batch.set_defaults(handler=_handle_batch)
+
+    render = subparsers.add_parser(
+        "render",
+        aliases=COMMAND_ALIASES["render"],
+        help="Generate visual artifacts and premium planetary scenes.",
+        description="Render visual outputs directly.",
+    )
+    # Default handler to show help if no subcommand is provided.
+    render.set_defaults(handler=lambda args: render.print_help() or 0)
+    render_sub = render.add_subparsers(dest="render_command", parser_class=OpastroArgumentParser)
+
+    planetary_scene = render_sub.add_parser(
+        "planetary-scene",
+        help="Generate a 2D/2.5D solar system or celestial scene.",
+        description="Render deterministic planetary positions onto a beautifully stylised map.",
+    )
+    planetary_scene.add_argument("--datetime", help="ISO date-time to render, e.g., 2026-04-16T12:00:00Z. Defaults to now.")
+    planetary_scene.add_argument("--theme", choices=["dark", "neon-blue", "observatory", "gold-premium"], default="dark", help="Color theme for the scene.")
+    planetary_scene.add_argument("--format", choices=["svg", "png"], default="svg", help="Output format.")
+    planetary_scene.add_argument("--projection", choices=["perspective", "top-down"], default="perspective", help="Perspective or top-down grid style.")
+    planetary_scene.add_argument("--include-labels", action="store_true", default=True, help="Include planetary labels (default true).")
+    planetary_scene.add_argument("--no-labels", action="store_false", dest="include_labels", help="Omit planetary labels.")
+    planetary_scene.add_argument("--include-orbits", action="store_true", default=True, help="Include orbit rings (default true).")
+    planetary_scene.add_argument("--no-orbits", action="store_false", dest="include_orbits", help="Omit orbit rings.")
+    planetary_scene.add_argument("--include-minor-bodies", action="store_true", default=False, help="Include chiron, nodes, etc. (default false).")
+    planetary_scene.add_argument("--include-aspects", action="store_true", default=False, help="Draw aspect connector lines (default false).")
+    planetary_scene.add_argument("--transparent", action="store_true", default=False, help="Render with a transparent background (PNG/SVG).")
+    planetary_scene.add_argument("--export", help="Output file path.", default="planetary_scene.svg")
+    planetary_scene.set_defaults(handler=_handle_render_planetary_scene)
 
     return parser
 
@@ -2873,6 +2905,54 @@ def _handle_natal(args: argparse.Namespace) -> int:
     exports = _export_natal_assets(report, args)
     for target in exports:
         print(f"saved output to {target}", file=sys.stderr)
+    return 0
+
+
+def _handle_render_planetary_scene(args: argparse.Namespace) -> int:
+    config = ServiceConfig()
+    ephemeris = EphemerisEngine(config.ephemeris)
+
+    if args.datetime:
+        # replace Z with +00:00 for fromisoformat compatibility in 3.11
+        dt_str = args.datetime.replace("Z", "+00:00")
+        target_dt = datetime.fromisoformat(dt_str)
+    else:
+        target_dt = datetime.now()
+
+    # Obtain positions directly as a snapshot
+    snapshot = ephemeris.chart_snapshot(target_dt)
+
+    export_path = args.export
+    if args.format == "png" and export_path.endswith(".svg"):
+        export_path = export_path.replace(".svg", ".png")
+    elif args.format == "svg" and export_path.endswith(".png"):
+        export_path = export_path.replace(".png", ".svg")
+
+    if args.format == "png":
+        build_planetary_scene_png(
+            snapshot=snapshot,
+            output_path=export_path,
+            theme=args.theme,
+            projection=args.projection,
+            include_labels=args.include_labels,
+            include_orbits=args.include_orbits,
+            include_minor_bodies=args.include_minor_bodies,
+            include_aspects=args.include_aspects,
+            transparent_bg=args.transparent,
+        )
+    else:
+        build_planetary_scene_svg(
+            snapshot=snapshot,
+            output_path=export_path,
+            theme=args.theme,
+            projection=args.projection,
+            include_labels=args.include_labels,
+            include_orbits=args.include_orbits,
+            include_minor_bodies=args.include_minor_bodies,
+            include_aspects=args.include_aspects,
+            transparent_bg=args.transparent,
+        )
+    print(f"saved output to {export_path}", file=sys.stderr)
     return 0
 
 

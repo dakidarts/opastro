@@ -85,6 +85,15 @@ Natal asset rendering is deterministic and code-defined:
 - legend sections are stacked in a responsive combined panel to keep spacing consistent across screen sizes
 - house overlay JSON includes sign polarity, element percentages, ASC/MC angle data, and house arc metadata
 
+## Planetary Scene Rendering
+
+The `planetary-scene` rendering module (`opastro render planetary-scene`) maps astronomical coordinates into a highly-stylised, faux-3D visual map:
+- **Perspective Canvas**: Uses an angled radial grid and tilted orbit rings to emulate 3D depth without requiring WebGL.
+- **Dynamic Elements**: Procedurally generates star fields, subtle nebulas, and orbit lines.
+- **Configurable Aesthetics**: Supports multiple visual themes (`dark`, `neon-blue`, `observatory`, `gold-premium`) and `top-down` vs `perspective` projections.
+- **Data Footer**: Includes a minimalist, auto-resizing grid displaying real-time planetary positions, retrogrades, and exact aspects.
+- **Output Formats**: Renders to `svg` or `png` with support for optional `--transparent` backgrounds while preserving core styling.
+
 ## Open-Core Boundary
 
 Current open-core renderer does **not** load premium meaning packs.

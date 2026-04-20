@@ -416,7 +416,7 @@ def test_golden_snapshot_root_help_output(monkeypatch, capsys):
     code = main(["--help"])
     out = capsys.readouterr().out
     assert code == 0
-    assert _snapshot_fingerprint(out) == "6cbf4ee1473ce42210d7aa844ea12e069e8a5e59d41137951394f51a48e7a083"
+    assert _snapshot_fingerprint(out) == "eb12f81eb25b3074c65955d6567fe485ed952dec766cb43e96e29b4afbda9603"
 
 
 def test_golden_snapshot_logger_help_output(monkeypatch, capsys):

@@ -1,10 +1,10 @@
+# OpAstro Engine (Open Core)
+
 <p align="center">
   <a href="https://opastro.com">
     <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1775556782/X-COVER_kfq8p8.jpg" alt="OpAstro Banner" />
   </a>
 </p>
-
-# OpAstro Engine (Open Core)
 
 <p align="center">
   <a href="https://pypi.org/project/opastro/"><img src="https://img.shields.io/badge/%F0%9F%93%A6%20PyPI-opastro-blue" alt="PyPI Package"></a>
@@ -120,7 +120,7 @@ Architecture graphic:
 ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
 │  Swiss Ephemeris │    │  Period Events   │    │  V2 Content      │
 │  Data Files      │    │  (Structured)    │    │  Repository      │
-│  (.se1 files)    │    │                  │    │  (Editorials    )│
+│  (.se1 files)    │    │                  │    │  (Editorials)    │
 └──────────────────┘    └──────────────────┘    └──────────────────┘
 ```
 
@@ -187,6 +187,7 @@ opastro
 | `opastro completion --shell ...` | Generate shell completion scripts |
 | `opastro ui` | Launch interactive TUI with section drill-down |
 | `opastro batch` | Multi-sign / multi-date report generation |
+| `opastro render` | Generate visual artifacts and premium planetary scenes |
 | `opastro serve` | Run local FastAPI app |
 
 Global flags:
@@ -306,7 +307,21 @@ opastro horoscope --period weekly --sign LEO --json
 
 # Export markdown report
 opastro horoscope --period daily --sign ARIES --format markdown --export reports/aries.md
+
+# Render premium 2D/2.5D planetary scene
+opastro render planetary-scene \
+  --datetime "2026-04-19T12:00:00Z" \
+  --theme dark \
+  --format svg \
+  --projection perspective \
+  --include-aspects \
+  --include-minor-bodies \
+  --transparent
 ```
+
+### Rendered Scene Example (April 20, 2026)
+
+![OpAstro Planetary Scene (April 20, 2026)](https://res.cloudinary.com/ds64xs2lp/image/upload/v1776666905/planetary_scene_n9kxuq.svg)
 
 Notes:
 - If `--user-name` is omitted, natal personalization falls back to active profile name; if none exists, it falls back to `OPASTRO`.

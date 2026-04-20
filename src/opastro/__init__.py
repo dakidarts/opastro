@@ -35,6 +35,7 @@ _NAMESPACE_MODULES = (
     "observability",
     "pregen",
     "profiles",
+    "scene_renderer",
     "service",
     "versioning",
     "interpretation",
