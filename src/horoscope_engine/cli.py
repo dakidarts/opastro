@@ -44,7 +44,11 @@ from .natal_artifacts import (
     build_natal_wheel_svg,
     build_natal_wheel_svg_split,
 )
-from .ephemeris import EphemerisEngine
+from .ephemeris import EphemerisEngine, MINOR_BODIES
+from .ephemeris_downloader import (
+    ensure_minor_body_ephemeris,
+    missing_ephemeris_files,
+)
 from .scene_renderer import build_planetary_scene_svg, build_planetary_scene_png
 from .profiles import DEFAULT_PROFILE_NAME, ProfileStore
 from .service import HoroscopeService
@@ -92,9 +96,15 @@ ACCENT_FADE_RGB = (108, 230, 151)
 ACCENT_DEEP_RGB = (46, 187, 101)
 COLOR_ACCENT = f"38;2;{ACCENT_RGB[0]};{ACCENT_RGB[1]};{ACCENT_RGB[2]}"
 COLOR_ACCENT_BOLD = f"1;{COLOR_ACCENT}"
-COLOR_ACCENT_DIM = f"38;2;{ACCENT_FADE_RGB[0]};{ACCENT_FADE_RGB[1]};{ACCENT_FADE_RGB[2]}"
-COLOR_ACCENT_SOFT = f"38;2;{ACCENT_SOFT_RGB[0]};{ACCENT_SOFT_RGB[1]};{ACCENT_SOFT_RGB[2]}"
-COLOR_ACCENT_DEEP = f"38;2;{ACCENT_DEEP_RGB[0]};{ACCENT_DEEP_RGB[1]};{ACCENT_DEEP_RGB[2]}"
+COLOR_ACCENT_DIM = (
+    f"38;2;{ACCENT_FADE_RGB[0]};{ACCENT_FADE_RGB[1]};{ACCENT_FADE_RGB[2]}"
+)
+COLOR_ACCENT_SOFT = (
+    f"38;2;{ACCENT_SOFT_RGB[0]};{ACCENT_SOFT_RGB[1]};{ACCENT_SOFT_RGB[2]}"
+)
+COLOR_ACCENT_DEEP = (
+    f"38;2;{ACCENT_DEEP_RGB[0]};{ACCENT_DEEP_RGB[1]};{ACCENT_DEEP_RGB[2]}"
+)
 RUNTIME_LOG_FILENAME = "runtime-errors.log"
 ANALYTICS_LOG_FILENAME = "analytics-events.log"
 INIT_TEMPLATES: dict[str, dict[str, Any]] = {
@@ -142,11 +152,14 @@ def _parse_sections(raw: Optional[str]) -> Optional[list[str]]:
 
 def _build_birth(args: argparse.Namespace) -> Optional[BirthData]:
     has_birth_extras = any(
-        value is not None for value in (args.birth_time, args.lat, args.lon, args.timezone)
+        value is not None
+        for value in (args.birth_time, args.lat, args.lon, args.timezone)
     )
     if not args.birth_date:
         if has_birth_extras:
-            raise ValueError("Provide --birth-date when using --birth-time, --lat/--lon, or --timezone.")
+            raise ValueError(
+                "Provide --birth-date when using --birth-time, --lat/--lon, or --timezone."
+            )
         return None
     if (args.lat is None) != (args.lon is None):
         raise ValueError("Provide both --lat and --lon together.")
@@ -191,7 +204,9 @@ def _build_base_parser() -> argparse.ArgumentParser:
         version=f"opastro {_app_version()}",
         help="Show installed Opastro version and exit.",
     )
-    subparsers = parser.add_subparsers(dest="command", parser_class=OpastroArgumentParser)
+    subparsers = parser.add_subparsers(
+        dest="command", parser_class=OpastroArgumentParser
+    )
 
     init = subparsers.add_parser(
         "init",
@@ -233,9 +248,26 @@ def _build_base_parser() -> argparse.ArgumentParser:
         help="Run local environment diagnostics for Opastro.",
         description="Check Python runtime, executable path, and key engine readiness flags.",
     )
-    doctor.add_argument("--json", action="store_true", help="Output diagnostics as JSON for CI/automation.")
-    doctor.add_argument("--fix", action="store_true", help="Attempt automatic fixes for detected dependency/runtime gaps.")
-    doctor.add_argument("--dry-run", action="store_true", help="Show fix commands without executing them.")
+    doctor.add_argument(
+        "--json",
+        action="store_true",
+        help="Output diagnostics as JSON for CI/automation.",
+    )
+    doctor.add_argument(
+        "--fix",
+        action="store_true",
+        help="Attempt automatic fixes for detected dependency/runtime gaps.",
+    )
+    doctor.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show fix commands without executing them.",
+    )
+    doctor.add_argument(
+        "--download-ephemeris",
+        action="store_true",
+        help="Download optional Swiss Ephemeris files (Eris, fixed stars, etc.).",
+    )
     doctor.set_defaults(handler=_handle_doctor)
 
     logger = subparsers.add_parser(
@@ -245,16 +277,30 @@ def _build_base_parser() -> argparse.ArgumentParser:
         description="Show, tail, clear, or locate structured CLI runtime error logs.",
     )
     logger.set_defaults(handler=_handle_logger_show, logger_command="show")
-    logger_sub = logger.add_subparsers(dest="logger_command", parser_class=OpastroArgumentParser)
+    logger_sub = logger.add_subparsers(
+        dest="logger_command", parser_class=OpastroArgumentParser
+    )
 
     logger_show = logger_sub.add_parser(
         "show",
         help="Show recent runtime error entries (default action).",
         description="Display structured runtime errors with command context and suggested fixes.",
     )
-    logger_show.add_argument("-n", "--limit", type=int, default=20, help="Number of most recent entries to show.")
-    logger_show.add_argument("--json", action="store_true", help="Render log entries as JSON.")
-    logger_show.add_argument("--verbose", action="store_true", help="Include traceback snippets in text mode.")
+    logger_show.add_argument(
+        "-n",
+        "--limit",
+        type=int,
+        default=20,
+        help="Number of most recent entries to show.",
+    )
+    logger_show.add_argument(
+        "--json", action="store_true", help="Render log entries as JSON."
+    )
+    logger_show.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include traceback snippets in text mode.",
+    )
     logger_show.set_defaults(handler=_handle_logger_show)
 
     logger_tail = logger_sub.add_parser(
@@ -262,9 +308,21 @@ def _build_base_parser() -> argparse.ArgumentParser:
         help="Show a compact recent slice of runtime errors.",
         description="Alias-style compact view for the most recent runtime failures.",
     )
-    logger_tail.add_argument("-n", "--limit", type=int, default=8, help="Number of most recent entries to show.")
-    logger_tail.add_argument("--json", action="store_true", help="Render log entries as JSON.")
-    logger_tail.add_argument("--verbose", action="store_true", help="Include traceback snippets in text mode.")
+    logger_tail.add_argument(
+        "-n",
+        "--limit",
+        type=int,
+        default=8,
+        help="Number of most recent entries to show.",
+    )
+    logger_tail.add_argument(
+        "--json", action="store_true", help="Render log entries as JSON."
+    )
+    logger_tail.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Include traceback snippets in text mode.",
+    )
     logger_tail.set_defaults(handler=_handle_logger_show)
 
     logger_path = logger_sub.add_parser(
@@ -288,7 +346,9 @@ def _build_base_parser() -> argparse.ArgumentParser:
         description="Manage reusable defaults for sign/birth/preferences.",
     )
     profile.set_defaults(handler=_handle_profile_list)
-    profile_sub = profile.add_subparsers(dest="profile_command", parser_class=OpastroArgumentParser)
+    profile_sub = profile.add_subparsers(
+        dest="profile_command", parser_class=OpastroArgumentParser
+    )
 
     profile_list = profile_sub.add_parser(
         "list",
@@ -302,7 +362,9 @@ def _build_base_parser() -> argparse.ArgumentParser:
         help="Show one profile (default: active).",
         description="Inspect stored profile fields.",
     )
-    profile_show.add_argument("--name", help="Profile name. Defaults to active profile.")
+    profile_show.add_argument(
+        "--name", help="Profile name. Defaults to active profile."
+    )
     profile_show.set_defaults(handler=_handle_profile_show)
 
     profile_use = profile_sub.add_parser(
@@ -318,8 +380,14 @@ def _build_base_parser() -> argparse.ArgumentParser:
         help="Create or update a profile.",
         description="Save profile defaults from explicit CLI flags.",
     )
-    profile_save.add_argument("--name", required=True, help="Profile name to create/update.")
-    profile_save.add_argument("--set-active", action="store_true", help="Set this profile as active after saving.")
+    profile_save.add_argument(
+        "--name", required=True, help="Profile name to create/update."
+    )
+    profile_save.add_argument(
+        "--set-active",
+        action="store_true",
+        help="Set this profile as active after saving.",
+    )
     _add_profile_fields(profile_save)
     profile_save.set_defaults(handler=_handle_profile_save)
 
@@ -351,7 +419,19 @@ def _build_base_parser() -> argparse.ArgumentParser:
     planet.add_argument(
         "--planet",
         required=True,
-        choices=["sun", "moon", "mercury", "venus", "mars", "jupiter", "saturn", "uranus", "neptune", "pluto", "chiron"],
+        choices=[
+            "sun",
+            "moon",
+            "mercury",
+            "venus",
+            "mars",
+            "jupiter",
+            "saturn",
+            "uranus",
+            "neptune",
+            "pluto",
+            "chiron",
+        ],
         help="Planet to focus in the report.",
     )
     planet.set_defaults(handler=_handle_planet)
@@ -371,8 +451,12 @@ def _build_base_parser() -> argparse.ArgumentParser:
         help="Run the FastAPI service locally.",
         description="Run the Opastro API server for app and integration development.",
     )
-    serve.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1).")
-    serve.add_argument("--port", type=int, default=8000, help="Bind port (default: 8000).")
+    serve.add_argument(
+        "--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)."
+    )
+    serve.add_argument(
+        "--port", type=int, default=8000, help="Bind port (default: 8000)."
+    )
     serve.add_argument("--reload", action="store_true", help="Enable dev reload mode.")
     serve.set_defaults(handler=_handle_serve)
 
@@ -388,8 +472,16 @@ def _build_base_parser() -> argparse.ArgumentParser:
         default="horoscope",
         help="Report type to explain (default: horoscope).",
     )
-    explain.add_argument("--period", choices=["daily", "weekly", "monthly", "yearly"], help="Report period.")
-    explain.add_argument("--planet", choices=[p.value for p in PlanetName], help="Planet required for kind=planet.")
+    explain.add_argument(
+        "--period",
+        choices=["daily", "weekly", "monthly", "yearly"],
+        help="Report period.",
+    )
+    explain.add_argument(
+        "--planet",
+        choices=[p.value for p in PlanetName],
+        help="Planet required for kind=planet.",
+    )
     _add_common_report_args(explain, require_period=False)
     explain.set_defaults(handler=_handle_explain)
 
@@ -399,7 +491,9 @@ def _build_base_parser() -> argparse.ArgumentParser:
         help="Print shell completion script.",
         description="Generate shell completion for bash/zsh/fish.",
     )
-    completion.add_argument("--shell", choices=["bash", "zsh", "fish"], required=True, help="Target shell.")
+    completion.add_argument(
+        "--shell", choices=["bash", "zsh", "fish"], required=True, help="Target shell."
+    )
     completion.set_defaults(handler=_handle_completion)
 
     ui = subparsers.add_parser(
@@ -409,7 +503,11 @@ def _build_base_parser() -> argparse.ArgumentParser:
         description="Launch curses-based keyboard UI for report navigation.",
     )
     _add_common_report_args(ui, require_period=True)
-    ui.add_argument("--no-interactive", action="store_true", help="Fallback to static text render (no curses).")
+    ui.add_argument(
+        "--no-interactive",
+        action="store_true",
+        help="Fallback to static text render (no curses).",
+    )
     ui.set_defaults(handler=_handle_ui)
 
     batch = subparsers.add_parser(
@@ -418,14 +516,30 @@ def _build_base_parser() -> argparse.ArgumentParser:
         help="Batch-generate reports for multiple signs and dates.",
         description="Run deterministic generation across many sign/date combinations.",
     )
-    batch.add_argument("--kind", choices=["horoscope", "birthday", "planet"], default="horoscope")
-    batch.add_argument("--period", required=True, choices=["daily", "weekly", "monthly", "yearly"])
-    batch.add_argument("--planet", choices=[p.value for p in PlanetName], help="Required for kind=planet.")
-    batch.add_argument("--signs", help="Comma-separated signs. Defaults to profile sign or all zodiac signs.")
+    batch.add_argument(
+        "--kind", choices=["horoscope", "birthday", "planet"], default="horoscope"
+    )
+    batch.add_argument(
+        "--period", required=True, choices=["daily", "weekly", "monthly", "yearly"]
+    )
+    batch.add_argument(
+        "--planet",
+        choices=[p.value for p in PlanetName],
+        help="Required for kind=planet.",
+    )
+    batch.add_argument(
+        "--signs",
+        help="Comma-separated signs. Defaults to profile sign or all zodiac signs.",
+    )
     batch.add_argument("--target-date", help="Single ISO date YYYY-MM-DD.")
     batch.add_argument("--date-from", help="Range start ISO date YYYY-MM-DD.")
     batch.add_argument("--date-to", help="Range end ISO date YYYY-MM-DD.")
-    batch.add_argument("--step-days", type=int, default=1, help="Step days for date ranges (default: 1).")
+    batch.add_argument(
+        "--step-days",
+        type=int,
+        default=1,
+        help="Step days for date ranges (default: 1).",
+    )
     batch.add_argument("--sections", help="Comma-separated sections.")
     batch.add_argument("--birth-date", help="Birth date in ISO format YYYY-MM-DD.")
     batch.add_argument("--birth-time", help="Birth time in HH:MM format.")
@@ -433,11 +547,18 @@ def _build_base_parser() -> argparse.ArgumentParser:
     batch.add_argument("--lon", type=float, help="Birth longitude.")
     batch.add_argument("--timezone", help="IANA timezone.")
     batch.add_argument("--zodiac-system", choices=["sidereal", "tropical"])
-    batch.add_argument("--ayanamsa", choices=["lahiri", "fagan_bradley", "krishnamurti", "raman", "yukteswar"])
-    batch.add_argument("--house-system", choices=["placidus", "whole_sign", "equal", "koch"])
+    batch.add_argument(
+        "--ayanamsa",
+        choices=["lahiri", "fagan_bradley", "krishnamurti", "raman", "yukteswar"],
+    )
+    batch.add_argument(
+        "--house-system", choices=["placidus", "whole_sign", "equal", "koch"]
+    )
     batch.add_argument("--node-type", choices=["true", "mean"])
     batch.add_argument("--tenant-id", help="Tenant identifier.")
-    batch.add_argument("--format", dest="output_format", choices=OUTPUT_FORMATS, default="text")
+    batch.add_argument(
+        "--format", dest="output_format", choices=OUTPUT_FORMATS, default="text"
+    )
     batch.add_argument("--export-dir", help="Directory for per-item exports.")
     batch.set_defaults(handler=_handle_batch)
 
@@ -449,31 +570,87 @@ def _build_base_parser() -> argparse.ArgumentParser:
     )
     # Default handler to show help if no subcommand is provided.
     render.set_defaults(handler=lambda args: render.print_help() or 0)
-    render_sub = render.add_subparsers(dest="render_command", parser_class=OpastroArgumentParser)
+    render_sub = render.add_subparsers(
+        dest="render_command", parser_class=OpastroArgumentParser
+    )
 
     planetary_scene = render_sub.add_parser(
         "planetary-scene",
         help="Generate a 2D/2.5D solar system or celestial scene.",
         description="Render deterministic planetary positions onto a beautifully stylised map.",
     )
-    planetary_scene.add_argument("--datetime", help="ISO date-time to render, e.g., 2026-04-16T12:00:00Z. Defaults to now.")
-    planetary_scene.add_argument("--theme", choices=["dark", "neon-blue", "observatory", "gold-premium"], default="dark", help="Color theme for the scene.")
-    planetary_scene.add_argument("--format", choices=["svg", "png"], default="svg", help="Output format.")
-    planetary_scene.add_argument("--projection", choices=["perspective", "top-down"], default="perspective", help="Perspective or top-down grid style.")
-    planetary_scene.add_argument("--include-labels", action="store_true", default=True, help="Include planetary labels (default true).")
-    planetary_scene.add_argument("--no-labels", action="store_false", dest="include_labels", help="Omit planetary labels.")
-    planetary_scene.add_argument("--include-orbits", action="store_true", default=True, help="Include orbit rings (default true).")
-    planetary_scene.add_argument("--no-orbits", action="store_false", dest="include_orbits", help="Omit orbit rings.")
-    planetary_scene.add_argument("--include-minor-bodies", action="store_true", default=False, help="Include chiron, nodes, etc. (default false).")
-    planetary_scene.add_argument("--include-aspects", action="store_true", default=False, help="Draw aspect connector lines (default false).")
-    planetary_scene.add_argument("--transparent", action="store_true", default=False, help="Render with a transparent background (PNG/SVG).")
-    planetary_scene.add_argument("--export", help="Output file path.", default="planetary_scene.svg")
+    planetary_scene.add_argument(
+        "--datetime",
+        help="ISO date-time to render, e.g., 2026-04-16T12:00:00Z. Defaults to now.",
+    )
+    planetary_scene.add_argument(
+        "--theme",
+        choices=["dark", "neon-blue", "observatory", "gold-premium"],
+        default="dark",
+        help="Color theme for the scene.",
+    )
+    planetary_scene.add_argument(
+        "--format", choices=["svg", "png"], default="svg", help="Output format."
+    )
+    planetary_scene.add_argument(
+        "--projection",
+        choices=["perspective", "top-down"],
+        default="perspective",
+        help="Perspective or top-down grid style.",
+    )
+    planetary_scene.add_argument(
+        "--include-labels",
+        action="store_true",
+        default=True,
+        help="Include planetary labels (default true).",
+    )
+    planetary_scene.add_argument(
+        "--no-labels",
+        action="store_false",
+        dest="include_labels",
+        help="Omit planetary labels.",
+    )
+    planetary_scene.add_argument(
+        "--include-orbits",
+        action="store_true",
+        default=True,
+        help="Include orbit rings (default true).",
+    )
+    planetary_scene.add_argument(
+        "--no-orbits",
+        action="store_false",
+        dest="include_orbits",
+        help="Omit orbit rings.",
+    )
+    planetary_scene.add_argument(
+        "--include-minor-bodies",
+        action="store_true",
+        default=False,
+        help="Include chiron, nodes, etc. (default false).",
+    )
+    planetary_scene.add_argument(
+        "--include-aspects",
+        action="store_true",
+        default=False,
+        help="Draw aspect connector lines (default false).",
+    )
+    planetary_scene.add_argument(
+        "--transparent",
+        action="store_true",
+        default=False,
+        help="Render with a transparent background (PNG/SVG).",
+    )
+    planetary_scene.add_argument(
+        "--export", help="Output file path.", default="planetary_scene.svg"
+    )
     planetary_scene.set_defaults(handler=_handle_render_planetary_scene)
 
     return parser
 
 
-def _add_common_report_args(parser: argparse.ArgumentParser, *, require_period: bool) -> None:
+def _add_common_report_args(
+    parser: argparse.ArgumentParser, *, require_period: bool
+) -> None:
     if require_period:
         parser.add_argument(
             "--period",
@@ -482,15 +659,21 @@ def _add_common_report_args(parser: argparse.ArgumentParser, *, require_period: 
             help="Report period.",
         )
     parser.add_argument("--sign", help="Zodiac sign (e.g. ARIES, TAURUS, GEMINI).")
-    parser.add_argument("--target-date", help="ISO date used to anchor the report, format YYYY-MM-DD.")
+    parser.add_argument(
+        "--target-date", help="ISO date used to anchor the report, format YYYY-MM-DD."
+    )
     parser.add_argument(
         "--sections",
         help="Comma-separated sections. Example: general,career,money",
     )
     parser.add_argument("--birth-date", help="Birth date in ISO format YYYY-MM-DD.")
     parser.add_argument("--birth-time", help="Birth time in HH:MM format.")
-    parser.add_argument("--lat", type=float, help="Birth latitude for personalized house calculations.")
-    parser.add_argument("--lon", type=float, help="Birth longitude for personalized house calculations.")
+    parser.add_argument(
+        "--lat", type=float, help="Birth latitude for personalized house calculations."
+    )
+    parser.add_argument(
+        "--lon", type=float, help="Birth longitude for personalized house calculations."
+    )
     parser.add_argument("--timezone", help="IANA timezone, e.g. Africa/Douala.")
     parser.add_argument(
         "--zodiac-system",
@@ -537,45 +720,86 @@ def _add_common_report_args(parser: argparse.ArgumentParser, *, require_period: 
 def _add_natal_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--birth-date", help="Birth date in ISO format YYYY-MM-DD.")
     parser.add_argument("--birth-time", help="Birth time in HH:MM format.")
-    parser.add_argument("--lat", type=float, help="Birth latitude for house calculations.")
-    parser.add_argument("--lon", type=float, help="Birth longitude for house calculations.")
+    parser.add_argument(
+        "--lat", type=float, help="Birth latitude for house calculations."
+    )
+    parser.add_argument(
+        "--lon", type=float, help="Birth longitude for house calculations."
+    )
     parser.add_argument("--timezone", help="IANA timezone, e.g. Africa/Douala.")
-    parser.add_argument("--user-name", help="Display name for personalized natal chart branding.")
+    parser.add_argument(
+        "--user-name", help="Display name for personalized natal chart branding."
+    )
     parser.add_argument("--zodiac-system", choices=["sidereal", "tropical"])
-    parser.add_argument("--ayanamsa", choices=["lahiri", "fagan_bradley", "krishnamurti", "raman", "yukteswar"])
-    parser.add_argument("--house-system", choices=["placidus", "whole_sign", "equal", "koch"])
+    parser.add_argument(
+        "--ayanamsa",
+        choices=["lahiri", "fagan_bradley", "krishnamurti", "raman", "yukteswar"],
+    )
+    parser.add_argument(
+        "--house-system", choices=["placidus", "whole_sign", "equal", "koch"]
+    )
     parser.add_argument("--node-type", choices=["true", "mean"])
     parser.add_argument("--tenant-id", help="Tenant identifier.")
     parser.add_argument("--json", action="store_true", help="Output raw natal JSON.")
     parser.add_argument("--wheel-svg", help="Export wheel chart as SVG.")
-    parser.add_argument("--split", action="store_true", help="Split wheel SVG into parts (full/main/legends).")
-    parser.add_argument("--split-png", action="store_true", help="Export split wheel parts as PNG (main/legends/combined).")
+    parser.add_argument(
+        "--split",
+        action="store_true",
+        help="Split wheel SVG into parts (full/main/legends).",
+    )
+    parser.add_argument(
+        "--split-png",
+        action="store_true",
+        help="Export split wheel parts as PNG (main/legends/combined).",
+    )
     parser.add_argument(
         "--split-layout",
         choices=["stacked", "side-by-side"],
         default="side-by-side",
         help="Presentation layout for split/composed wheel outputs.",
     )
-    parser.add_argument("--split-dir", help="Directory for split wheel parts when using --split.")
+    parser.add_argument(
+        "--split-dir", help="Directory for split wheel parts when using --split."
+    )
     parser.add_argument("--wheel-png", help="Export wheel chart as PNG.")
     parser.add_argument("--house-map", help="Export house overlay map JSON.")
     parser.add_argument("--pdf", help="Export branded natal PDF report.")
-    parser.add_argument("--brand-title", default=None, help="Brand title for exported assets.")
+    parser.add_argument(
+        "--brand-title", default=None, help="Brand title for exported assets."
+    )
     parser.add_argument("--brand-url", default=None, help="Brand URL for PDF footer.")
-    parser.add_argument("--premium-url", default=None, help="Premium URL callout in PDF.")
-    parser.add_argument("--accent", default=None, help="Hex accent color for visual exports.")
+    parser.add_argument(
+        "--premium-url", default=None, help="Premium URL callout in PDF."
+    )
+    parser.add_argument(
+        "--accent", default=None, help="Hex accent color for visual exports."
+    )
     parser.add_argument(
         "--wheel-theme",
         choices=["night", "day"],
         default=None,
         help="Wheel color theme for SVG/PNG/PDF exports.",
     )
+    parser.add_argument(
+        "--include-fixed-stars",
+        action="store_true",
+        help="Include fixed star positions in the natal snapshot.",
+    )
+    parser.add_argument(
+        "--include-arabic-parts",
+        action="store_true",
+        help="Include Arabic parts (Part of Fortune, Part of Spirit) in the natal snapshot.",
+    )
 
 
 def _add_profile_fields(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--user-name", help="Default display name for personalized natal charts.")
+    parser.add_argument(
+        "--user-name", help="Default display name for personalized natal charts."
+    )
     parser.add_argument("--sign", help="Default zodiac sign, e.g. ARIES.")
-    parser.add_argument("--birth-date", help="Default birth date in ISO format YYYY-MM-DD.")
+    parser.add_argument(
+        "--birth-date", help="Default birth date in ISO format YYYY-MM-DD."
+    )
     parser.add_argument("--birth-time", help="Default birth time in HH:MM format.")
     parser.add_argument("--lat", type=float, help="Default birth latitude.")
     parser.add_argument("--lon", type=float, help="Default birth longitude.")
@@ -602,11 +826,15 @@ def _add_profile_fields(parser: argparse.ArgumentParser) -> None:
         help="Default node type.",
     )
     parser.add_argument("--tenant-id", help="Default tenant id.")
-    parser.add_argument("--wheel-theme", choices=["night", "day"], help="Default natal wheel theme.")
+    parser.add_argument(
+        "--wheel-theme", choices=["night", "day"], help="Default natal wheel theme."
+    )
     parser.add_argument("--accent", help="Default natal accent hex color.")
     parser.add_argument("--brand-title", help="Default natal brand title for exports.")
     parser.add_argument("--brand-url", help="Default natal brand URL for PDF footer.")
-    parser.add_argument("--premium-url", help="Default natal premium URL callout for PDF.")
+    parser.add_argument(
+        "--premium-url", help="Default natal premium URL callout for PDF."
+    )
     parser.add_argument(
         "--format",
         dest="output_format",
@@ -640,7 +868,9 @@ def _should_colorize() -> bool:
         return False
     if mode in {"always", "1", "true", "on"}:
         return True
-    force_color = (os.getenv("CLICOLOR_FORCE") or os.getenv("FORCE_COLOR") or "").strip()
+    force_color = (
+        os.getenv("CLICOLOR_FORCE") or os.getenv("FORCE_COLOR") or ""
+    ).strip()
     if force_color and force_color not in {"0", "false", "False"}:
         return True
     term = (os.getenv("TERM") or "").strip().lower()
@@ -650,9 +880,19 @@ def _should_colorize() -> bool:
 
 
 def _supports_truecolor() -> bool:
-    if (os.getenv("OPASTRO_TRUECOLOR") or "").strip().lower() in {"1", "true", "on", "yes"}:
+    if (os.getenv("OPASTRO_TRUECOLOR") or "").strip().lower() in {
+        "1",
+        "true",
+        "on",
+        "yes",
+    }:
         return True
-    if (os.getenv("OPASTRO_TRUECOLOR") or "").strip().lower() in {"0", "false", "off", "no"}:
+    if (os.getenv("OPASTRO_TRUECOLOR") or "").strip().lower() in {
+        "0",
+        "false",
+        "off",
+        "no",
+    }:
         return False
     if (os.getenv("TERM_PROGRAM") or "").strip() == "Apple_Terminal":
         # Apple Terminal can render truecolor inconsistently depending on profile/theme.
@@ -710,7 +950,9 @@ def _style_rgb(text: str, rgb: tuple[int, int, int], *, bold: bool = False) -> s
     return _style(text, code)
 
 
-def _gradient_lines(block: str, colors: list[tuple[int, int, int]], *, bold: bool = False) -> str:
+def _gradient_lines(
+    block: str, colors: list[tuple[int, int, int]], *, bold: bool = False
+) -> str:
     lines = block.splitlines()
     if not lines:
         return block
@@ -726,7 +968,13 @@ def _gradient_lines(block: str, colors: list[tuple[int, int, int]], *, bold: boo
 
 
 def _term_width() -> int:
-    return max(72, min(DEFAULT_WRAP_WIDTH, shutil.get_terminal_size((DEFAULT_WRAP_WIDTH, 20)).columns))
+    return max(
+        72,
+        min(
+            DEFAULT_WRAP_WIDTH,
+            shutil.get_terminal_size((DEFAULT_WRAP_WIDTH, 20)).columns,
+        ),
+    )
 
 
 def _wrap(line: str, indent: str = "") -> str:
@@ -810,7 +1058,9 @@ def _render_line_table(
     pad = max(0, cell_padding)
     fixed_overhead = 3 + (pad * 4)
     left_seed = [headers[0], *[left for left, _ in rows]]
-    left_width = min(max(left_min_width, max(len(value) for value in left_seed)), left_max_width)
+    left_width = min(
+        max(left_min_width, max(len(value) for value in left_seed)), left_max_width
+    )
     right_width = width - left_width - fixed_overhead
     if right_width < 24:
         left_width = max(10, width - (24 + fixed_overhead))
@@ -852,7 +1102,9 @@ def _render_line_table(
     return "\n".join(lines)
 
 
-def _formatter_action_strings(parser: argparse.ArgumentParser, action: argparse.Action) -> tuple[str, str]:
+def _formatter_action_strings(
+    parser: argparse.ArgumentParser, action: argparse.Action
+) -> tuple[str, str]:
     formatter = parser._get_formatter()
     if action.option_strings:
         option_tokens = sorted(
@@ -962,7 +1214,11 @@ def _render_themed_help(parser: argparse.ArgumentParser) -> str:
     table_width = _term_width()
     compact = table_width <= 84
     tight = table_width <= 74
-    lines.append(_gradient_lines("OPASTRO HELP", [ACCENT_SOFT_RGB, ACCENT_RGB, ACCENT_DEEP_RGB], bold=True))
+    lines.append(
+        _gradient_lines(
+            "OPASTRO HELP", [ACCENT_SOFT_RGB, ACCENT_RGB, ACCENT_DEEP_RGB], bold=True
+        )
+    )
     lines.append(_style(f"{parser.prog}", COLOR_ACCENT_SOFT))
 
     if parser.description:
@@ -1060,7 +1316,8 @@ def _render_pretty_report(payload) -> int:
     print(_wrap(meta))
     if payload.data.factor_values:
         factor_preview = ", ".join(
-            f"{key}={value}" for key, value in list(payload.data.factor_values.items())[:6]
+            f"{key}={value}"
+            for key, value in list(payload.data.factor_values.items())[:6]
         )
         print(_wrap(f"Top factor drivers: {factor_preview}"))
     _print_divider()
@@ -1106,7 +1363,10 @@ def _render_markdown(payload) -> str:
         f"- **Window:** `{payload.start.date()}` to `{payload.end.date()}`"
     )
     if payload.data.factor_values:
-        preview = ", ".join(f"`{key}={value}`" for key, value in list(payload.data.factor_values.items())[:6])
+        preview = ", ".join(
+            f"`{key}={value}`"
+            for key, value in list(payload.data.factor_values.items())[:6]
+        )
         lines.append(f"- **Top factors:** {preview}")
     lines.append("")
 
@@ -1140,9 +1400,15 @@ def _render_html(payload) -> str:
     for insight in payload.sections:
         section_label = html_escape(insight.section.value.replace("_", " ").title())
         summary = html_escape(insight.summary)
-        highlights = "".join(f"<li>{html_escape(item)}</li>" for item in insight.highlights[:3])
-        cautions = "".join(f"<li>{html_escape(item)}</li>" for item in insight.cautions[:2])
-        actions = "".join(f"<li>{html_escape(item)}</li>" for item in insight.actions[:2])
+        highlights = "".join(
+            f"<li>{html_escape(item)}</li>" for item in insight.highlights[:3]
+        )
+        cautions = "".join(
+            f"<li>{html_escape(item)}</li>" for item in insight.cautions[:2]
+        )
+        actions = "".join(
+            f"<li>{html_escape(item)}</li>" for item in insight.actions[:2]
+        )
         section_blocks.append(
             f"""
             <section class="card">
@@ -1158,7 +1424,8 @@ def _render_html(payload) -> str:
     factor_preview = ""
     if payload.data.factor_values:
         factor_preview = ", ".join(
-            html_escape(f"{key}={value}") for key, value in list(payload.data.factor_values.items())[:6]
+            html_escape(f"{key}={value}")
+            for key, value in list(payload.data.factor_values.items())[:6]
         )
 
     return f"""<!doctype html>
@@ -1236,8 +1503,8 @@ def _render_html(payload) -> str:
       <div><strong>Window:</strong> {html_escape(str(payload.start.date()))} to {html_escape(str(payload.end.date()))}</div>
       {"<div><strong>Top factors:</strong> " + factor_preview + "</div>" if factor_preview else ""}
     </div>
-    {''.join(section_blocks)}
-    <footer>{html_escape(UPSELL_TEXT).replace(chr(10), '<br/>')}</footer>
+    {"".join(section_blocks)}
+    <footer>{html_escape(UPSELL_TEXT).replace(chr(10), "<br/>")}</footer>
   </main>
 </body>
 </html>
@@ -1253,7 +1520,9 @@ def _resolve_output_format(args: argparse.Namespace) -> str:
     return "text"
 
 
-def _render_output(payload, *, output_format: str, export_path: Optional[str] = None) -> int:
+def _render_output(
+    payload, *, output_format: str, export_path: Optional[str] = None
+) -> int:
     if output_format not in OUTPUT_FORMATS:
         raise ValueError(f"Unsupported format: {output_format}")
 
@@ -1308,6 +1577,8 @@ def _build_natal_request(args: argparse.Namespace) -> NatalBirthchartRequest:
         house_system=args.house_system,
         node_type=args.node_type,
         tenant_id=args.tenant_id,
+        include_fixed_stars=getattr(args, "include_fixed_stars", False),
+        include_arabic_parts=getattr(args, "include_arabic_parts", False),
     )
 
 
@@ -1319,7 +1590,9 @@ def _render_natal_text(report) -> str:
         f"Sign: {report.sign} | Birth: {report.birth.date.isoformat()} | "
         f"Rising: {report.snapshot.rising_sign or 'N/A'} | Houses: {report.snapshot.house_system or 'N/A'}"
     )
-    lines.append(f"Positions: {len(report.snapshot.positions)} | Aspects: {len(report.snapshot.aspects)}")
+    lines.append(
+        f"Positions: {len(report.snapshot.positions)} | Aspects: {len(report.snapshot.aspects)}"
+    )
     premium = report.premium_insights
     if premium:
         signature = premium.dominant_signature
@@ -1337,6 +1610,13 @@ def _render_natal_text(report) -> str:
             lines.append(f"Relationship score: {premium.relationship_module.score:.1f}")
         if premium.career_module:
             lines.append(f"Career score: {premium.career_module.score:.1f}")
+    if report.snapshot.fixed_stars:
+        lines.append(f"Fixed stars: {len(report.snapshot.fixed_stars)}")
+    if report.snapshot.arabic_parts:
+        for part in report.snapshot.arabic_parts:
+            lines.append(
+                f"{part.name}: {part.sign} {part.degree_in_sign:.1f}° ({part.formula})"
+            )
     lines.append("")
     lines.append(UPSELL_TEXT)
     return "\n".join(lines)
@@ -1362,12 +1642,16 @@ def _export_natal_assets(report, args: argparse.Namespace) -> list[Path]:
         )
 
     if args.wheel_svg:
-        svg = split_payload["full_svg"] if split_payload else build_natal_wheel_svg(
-            report,
-            accent_color=accent,
-            brand_title=brand_title,
-            user_name=getattr(args, "user_name", None),
-            theme=wheel_theme,
+        svg = (
+            split_payload["full_svg"]
+            if split_payload
+            else build_natal_wheel_svg(
+                report,
+                accent_color=accent,
+                brand_title=brand_title,
+                user_name=getattr(args, "user_name", None),
+                theme=wheel_theme,
+            )
         )
         target = _save_export(svg, args.wheel_svg)
         exports.append(target)
@@ -1548,21 +1832,32 @@ def _generate_payload(service: HoroscopeService, args: argparse.Namespace, kind:
     return service.generate(_build_horoscope_request(args))
 
 
-def _line_provenance(lines: list[str], details: list[Any], *, insight_key: str) -> list[dict[str, Any]]:
+def _line_provenance(
+    lines: list[str], details: list[Any], *, insight_key: str
+) -> list[dict[str, Any]]:
     if not lines:
         return []
     if not details:
-        return [{"line": line, "source_factors": [], "why": "No factor details available"} for line in lines]
+        return [
+            {"line": line, "source_factors": [], "why": "No factor details available"}
+            for line in lines
+        ]
     sorted_details = sorted(details, key=lambda detail: detail.weight, reverse=True)
     output: list[dict[str, Any]] = []
     for idx, line in enumerate(lines):
         primary = sorted_details[idx % len(sorted_details)]
         secondary = sorted_details[(idx + 1) % len(sorted_details)]
-        why = primary.factor_insights.get(insight_key) or primary.factor_insights.get("lite_meaning") or ""
+        why = (
+            primary.factor_insights.get(insight_key)
+            or primary.factor_insights.get("lite_meaning")
+            or ""
+        )
         output.append(
             {
                 "line": line,
-                "source_factors": [primary.factor_type, secondary.factor_type] if secondary != primary else [primary.factor_type],
+                "source_factors": [primary.factor_type, secondary.factor_type]
+                if secondary != primary
+                else [primary.factor_type],
                 "why": why,
             }
         )
@@ -1583,7 +1878,8 @@ def _build_explain_payload(payload) -> dict[str, Any]:
                     "why": detail.factor_insights.get("lite_meaning"),
                     "reflection": detail.factor_insights.get("reflection"),
                     "caution": detail.factor_insights.get("caution"),
-                    "action_hint": detail.factor_insights.get(tip_key) or detail.factor_insights.get("affirmation"),
+                    "action_hint": detail.factor_insights.get(tip_key)
+                    or detail.factor_insights.get("affirmation"),
                 }
             )
 
@@ -1594,12 +1890,23 @@ def _build_explain_payload(payload) -> dict[str, Any]:
                 "intensity": insight.intensity,
                 "summary": {
                     "line": insight.summary,
-                    "source_factors": [d.factor_type for d in sorted(insight.factor_details, key=lambda x: x.weight, reverse=True)[:3]],
+                    "source_factors": [
+                        d.factor_type
+                        for d in sorted(
+                            insight.factor_details, key=lambda x: x.weight, reverse=True
+                        )[:3]
+                    ],
                     "why": "Summary is composed from highest-weighted factor details with deterministic cadence templates.",
                 },
-                "highlights": _line_provenance(insight.highlights, insight.factor_details, insight_key="motivation"),
-                "cautions": _line_provenance(insight.cautions, insight.factor_details, insight_key="caution"),
-                "actions": _line_provenance(insight.actions, insight.factor_details, insight_key=tip_key),
+                "highlights": _line_provenance(
+                    insight.highlights, insight.factor_details, insight_key="motivation"
+                ),
+                "cautions": _line_provenance(
+                    insight.cautions, insight.factor_details, insight_key="caution"
+                ),
+                "actions": _line_provenance(
+                    insight.actions, insight.factor_details, insight_key=tip_key
+                ),
                 "factors": detail_records,
                 "scores": insight.scores,
             }
@@ -1622,10 +1929,14 @@ def _render_explain_text(explain_payload: dict[str, Any]) -> str:
     )
     lines.append("")
     for section in explain_payload["sections"]:
-        lines.append(f"{section['section'].replace('_', ' ').title()} ({section['intensity']})")
+        lines.append(
+            f"{section['section'].replace('_', ' ').title()} ({section['intensity']})"
+        )
         lines.append(f"  Summary: {section['summary']['line']}")
         lines.append(f"  Why: {section['summary']['why']}")
-        lines.append(f"  Source factors: {', '.join(section['summary']['source_factors'])}")
+        lines.append(
+            f"  Source factors: {', '.join(section['summary']['source_factors'])}"
+        )
         if section["highlights"]:
             lines.append("  Highlights provenance:")
             for item in section["highlights"][:3]:
@@ -1650,13 +1961,17 @@ def _render_explain_markdown(explain_payload: dict[str, Any]) -> str:
     )
     lines.append("")
     for section in explain_payload["sections"]:
-        lines.append(f"## {section['section'].replace('_', ' ').title()} ({section['intensity']})")
+        lines.append(
+            f"## {section['section'].replace('_', ' ').title()} ({section['intensity']})"
+        )
         lines.append("")
         lines.append(f"**Summary line**: {section['summary']['line']}")
         lines.append("")
         lines.append(f"**Why**: {section['summary']['why']}")
         lines.append("")
-        lines.append(f"**Source factors**: {', '.join('`'+f+'`' for f in section['summary']['source_factors'])}")
+        lines.append(
+            f"**Source factors**: {', '.join('`' + f + '`' for f in section['summary']['source_factors'])}"
+        )
         lines.append("")
         if section["factors"]:
             lines.append("### Factor Provenance")
@@ -1679,10 +1994,10 @@ def _render_explain_html(explain_payload: dict[str, Any]) -> str:
         body.append(
             f"""
             <section class="card">
-              <h2>{html_escape(section['section'].replace('_', ' ').title())} <span class="pill">{html_escape(section['intensity'])}</span></h2>
-              <p><strong>Summary:</strong> {html_escape(section['summary']['line'])}</p>
-              <p><strong>Why:</strong> {html_escape(section['summary']['why'])}</p>
-              <p><strong>Source factors:</strong> {html_escape(', '.join(section['summary']['source_factors']))}</p>
+              <h2>{html_escape(section["section"].replace("_", " ").title())} <span class="pill">{html_escape(section["intensity"])}</span></h2>
+              <p><strong>Summary:</strong> {html_escape(section["summary"]["line"])}</p>
+              <p><strong>Why:</strong> {html_escape(section["summary"]["why"])}</p>
+              <p><strong>Source factors:</strong> {html_escape(", ".join(section["summary"]["source_factors"]))}</p>
               <h3>Factor Provenance</h3>
               <ul>{factors}</ul>
             </section>
@@ -1698,14 +2013,16 @@ main{{max-width:960px;margin:0 auto;padding:24px 16px}}
 h1{{color:#0f766e}} .pill{{font-size:12px;background:#e7fffb;color:#0f766e;padding:2px 7px;border-radius:999px}}
 </style></head><body><main>
 <h1>OPASTRO EXPLAIN</h1>
-<p><strong>Type:</strong> {html_escape(explain_payload['report_type'])} |
-<strong>Sign:</strong> {html_escape(explain_payload['sign'])} |
-<strong>Period:</strong> {html_escape(explain_payload['period'])}</p>
-{''.join(body)}
+<p><strong>Type:</strong> {html_escape(explain_payload["report_type"])} |
+<strong>Sign:</strong> {html_escape(explain_payload["sign"])} |
+<strong>Period:</strong> {html_escape(explain_payload["period"])}</p>
+{"".join(body)}
 </main></body></html>"""
 
 
-def _render_explain_output(explain_payload: dict[str, Any], *, output_format: str, export_path: Optional[str]) -> int:
+def _render_explain_output(
+    explain_payload: dict[str, Any], *, output_format: str, export_path: Optional[str]
+) -> int:
     if output_format == "json":
         rendered = json.dumps(explain_payload, indent=2, sort_keys=True)
     elif output_format == "markdown":
@@ -1723,9 +2040,24 @@ def _render_explain_output(explain_payload: dict[str, Any], *, output_format: st
 
 
 def _show_welcome() -> int:
-    print(_gradient_lines(WELCOME_BANNER.strip("\n"), [ACCENT_SOFT_RGB, ACCENT_RGB, ACCENT_DEEP_RGB], bold=True))
-    print(_style(f"OPASTRO • Open Core Horoscope Engine • {_app_version()}", COLOR_ACCENT_BOLD))
-    print(_wrap("Enterprise-grade deterministic calculations with lightweight open meanings and premium-ready API hooks."))
+    print(
+        _gradient_lines(
+            WELCOME_BANNER.strip("\n"),
+            [ACCENT_SOFT_RGB, ACCENT_RGB, ACCENT_DEEP_RGB],
+            bold=True,
+        )
+    )
+    print(
+        _style(
+            f"OPASTRO • Open Core Horoscope Engine • {_app_version()}",
+            COLOR_ACCENT_BOLD,
+        )
+    )
+    print(
+        _wrap(
+            "Enterprise-grade deterministic calculations with lightweight open meanings and premium-ready API hooks."
+        )
+    )
     _print_divider()
     _print_heading("Commands")
     commands = [
@@ -1750,7 +2082,12 @@ def _show_welcome() -> int:
     _print_divider()
     _print_heading("Quick Start")
     print(_wrap("opastro init", indent="  "))
-    print(_wrap("opastro horoscope --period daily --sign ARIES --target-date 2026-04-03", indent="  "))
+    print(
+        _wrap(
+            "opastro horoscope --period daily --sign ARIES --target-date 2026-04-03",
+            indent="  ",
+        )
+    )
     print(_wrap("opastro --help", indent="  "))
     _print_divider()
     print(_gradient_lines(UPSELL_TEXT, [ACCENT_SOFT_RGB, ACCENT_RGB], bold=True))
@@ -1820,7 +2157,9 @@ def _doctor_fix(*, dry_run: bool, emit_text: bool = True) -> dict[str, Any]:
         stderr_preview = "\n".join(result.stderr.splitlines()[-5:])
         payload["stderr_preview"] = stderr_preview
         if emit_text:
-            print(_style(f"Fix result    : WARN (pip exited {result.returncode})", "1;33"))
+            print(
+                _style(f"Fix result    : WARN (pip exited {result.returncode})", "1;33")
+            )
         if stderr_preview:
             if emit_text:
                 print(stderr_preview)
@@ -1846,11 +2185,23 @@ def _handle_doctor(args: argparse.Namespace) -> int:
     runtime_ok = sys.version_info >= MIN_PYTHON_VERSION
     if not args.json:
         if sys.version_info >= MIN_PYTHON_VERSION:
-            print(_style(f"Runtime check  : OK (Python {required} requirement satisfied)", "1;32"))
+            print(
+                _style(
+                    f"Runtime check  : OK (Python {required} requirement satisfied)",
+                    "1;32",
+                )
+            )
         else:
             current = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
-            print(_style(f"Runtime check  : WARN (running {current}; requires {required})", "1;33"))
-            print("Recommendation : Use a Python 3.11+ virtual environment and reinstall opastro.")
+            print(
+                _style(
+                    f"Runtime check  : WARN (running {current}; requires {required})",
+                    "1;33",
+                )
+            )
+            print(
+                "Recommendation : Use a Python 3.11+ virtual environment and reinstall opastro."
+            )
 
     missing_deps, ok_deps = _dependency_health()
     if not args.json:
@@ -1878,7 +2229,9 @@ def _handle_doctor(args: argparse.Namespace) -> int:
         "fix": {"requested": bool(args.fix), "dry_run": bool(args.dry_run)},
     }
     if not runtime_ok:
-        payload["runtime_recommendation"] = "Use a Python 3.11+ virtual environment and reinstall opastro."
+        payload["runtime_recommendation"] = (
+            "Use a Python 3.11+ virtual environment and reinstall opastro."
+        )
 
     if args.fix:
         if not in_venv and not args.dry_run:
@@ -1892,8 +2245,15 @@ def _handle_doctor(args: argparse.Namespace) -> int:
             if args.json:
                 print(json.dumps(payload, indent=2, sort_keys=True))
                 return 0
-            print(_style("Fix blocked   : Refusing to install outside a virtual environment.", "1;33"))
-            print("Recommendation : Create a venv first, then run `opastro doctor --fix`.")
+            print(
+                _style(
+                    "Fix blocked   : Refusing to install outside a virtual environment.",
+                    "1;33",
+                )
+            )
+            print(
+                "Recommendation : Create a venv first, then run `opastro doctor --fix`."
+            )
             return 0
 
         payload["fix"] = _doctor_fix(dry_run=args.dry_run, emit_text=not args.json)
@@ -1908,11 +2268,62 @@ def _handle_doctor(args: argparse.Namespace) -> int:
                     print(_style("Post-fix check : OK", "1;32"))
             else:
                 if not args.json:
-                    print(_style(f"Post-fix check : WARN (still missing: {', '.join(after_missing)})", "1;33"))
+                    print(
+                        _style(
+                            f"Post-fix check : WARN (still missing: {', '.join(after_missing)})",
+                            "1;33",
+                        )
+                    )
     elif missing_deps or not runtime_ok:
-        payload["suggestion"] = "Run `opastro doctor --fix --dry-run` to preview automatic remediation."
+        payload["suggestion"] = (
+            "Run `opastro doctor --fix --dry-run` to preview automatic remediation."
+        )
         if not args.json:
-            print("Suggestion     : Run `opastro doctor --fix --dry-run` to preview automatic remediation.")
+            print(
+                "Suggestion     : Run `opastro doctor --fix --dry-run` to preview automatic remediation."
+            )
+
+    # Ephemeris health check
+    ephe_missing = missing_ephemeris_files(cfg.ephemeris.ephemeris_path)
+    minor_names = [b.name for b in MINOR_BODIES]
+    payload["minor_bodies_available"] = minor_names
+    payload["ephemeris_files_missing"] = ephe_missing
+
+    if not args.json:
+        print(f"Minor bodies   : {', '.join(minor_names) if minor_names else 'none'}")
+        if ephe_missing:
+            print(
+                _style(
+                    f"Ephemeris files: MISSING ({', '.join(ephe_missing)})",
+                    "1;33",
+                )
+            )
+            print(
+                "Recommendation : Run `opastro doctor --download-ephemeris` to fetch optional files."
+            )
+        else:
+            print(_style("Ephemeris files: OK", "1;32"))
+
+    if args.download_ephemeris:
+        if not args.json:
+            _print_heading("Downloading Ephemeris Files")
+        try:
+            downloaded = ensure_minor_body_ephemeris(cfg.ephemeris.ephemeris_path)
+            payload["downloaded"] = [str(p) for p in downloaded]
+            if not args.json:
+                if downloaded:
+                    for path in downloaded:
+                        print(f"  Downloaded   : {path}")
+                    print(_style("Download result: OK", "1;32"))
+                else:
+                    print("Download result: All required files already present.")
+        except Exception as exc:
+            payload["download_error"] = str(exc)
+            if not args.json:
+                print(_style(f"Download error : {exc}", "1;31"))
+        # Refresh minor body list after download
+        # (requires re-import, so just report what we have)
+        payload["minor_bodies_available_after_download"] = minor_names
 
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
@@ -2036,29 +2447,43 @@ def _suggest_runtime_fixes(exc: Exception) -> list[str]:
     fixes: list[str] = []
 
     if "provide --birth-date" in lowered:
-        fixes.append("Add `--birth-date YYYY-MM-DD` whenever using `--birth-time`, `--lat/--lon`, or `--timezone`.")
+        fixes.append(
+            "Add `--birth-date YYYY-MM-DD` whenever using `--birth-time`, `--lat/--lon`, or `--timezone`."
+        )
     if "both --lat and --lon together" in lowered:
-        fixes.append("Pass both `--lat` and `--lon` together for personalized house calculations.")
+        fixes.append(
+            "Pass both `--lat` and `--lon` together for personalized house calculations."
+        )
     if "unsupported zodiac sign" in lowered:
         fixes.append(f"Use a valid uppercase sign: {', '.join(ZODIAC_SIGNS)}.")
     if "profile not found" in lowered:
-        fixes.append("Run `opastro profile list` to inspect profiles, or `opastro init` to create one.")
+        fixes.append(
+            "Run `opastro profile list` to inspect profiles, or `opastro init` to create one."
+        )
     if "unsupported format" in lowered:
         fixes.append("Use one of `--format text|json|markdown|html`.")
     if "unsupported value for" in lowered:
-        fixes.append("Run the command with `--help` to view valid choices for that flag.")
+        fixes.append(
+            "Run the command with `--help` to view valid choices for that flag."
+        )
     if "--planet is required" in lowered:
-        fixes.append("Add `--planet` when running `planet` or planet-focused batch/explain flows.")
+        fixes.append(
+            "Add `--planet` when running `planet` or planet-focused batch/explain flows."
+        )
     if "invalid isoformat string" in lowered or "invalid isoformat" in lowered:
         fixes.append("Use ISO date format `YYYY-MM-DD` and time format `HH:MM`.")
     if "timezone" in lowered and ("invalid" in lowered or "not found" in lowered):
         fixes.append("Use a valid IANA timezone like `Africa/Douala` or `UTC`.")
     if "no module named" in lowered:
-        fixes.append("Run `opastro doctor`, then `opastro doctor --fix` inside a Python 3.11+ virtual environment.")
+        fixes.append(
+            "Run `opastro doctor`, then `opastro doctor --fix` inside a Python 3.11+ virtual environment."
+        )
     if "permission denied" in lowered or "read-only file system" in lowered:
         fixes.append("Choose a writable output location and verify file permissions.")
     if "no such file or directory" in lowered:
-        fixes.append("Verify all input/output paths and create parent directories before exporting.")
+        fixes.append(
+            "Verify all input/output paths and create parent directories before exporting."
+        )
 
     if not fixes:
         fixes.extend(
@@ -2072,7 +2497,9 @@ def _suggest_runtime_fixes(exc: Exception) -> list[str]:
 
 
 def _serialize_runtime_error(argv: list[str], exc: Exception) -> dict[str, Any]:
-    tb_text = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).strip()
+    tb_text = "".join(
+        traceback.format_exception(type(exc), exc, exc.__traceback__)
+    ).strip()
     return {
         "timestamp": datetime.now().astimezone().isoformat(timespec="seconds"),
         "opastro_version": _app_version(),
@@ -2182,7 +2609,11 @@ def _handle_logger_show(args: argparse.Namespace) -> int:
     print(_wrap(f"Entries shown : {len(recent)} of {len(all_entries)} (limit={limit})"))
     _print_divider()
     if not recent:
-        print(_wrap("No runtime errors logged yet. New uncaught CLI exceptions will be recorded automatically."))
+        print(
+            _wrap(
+                "No runtime errors logged yet. New uncaught CLI exceptions will be recorded automatically."
+            )
+        )
         return 0
 
     _render_logger_rows(recent, verbose=verbose)
@@ -2239,7 +2670,9 @@ def _validate_sections(values: Optional[list[str]]) -> Optional[list[str]]:
     return cleaned or None
 
 
-def _init_defaults(existing: dict[str, Any], template_name: Optional[str], detected_tz: str) -> dict[str, Any]:
+def _init_defaults(
+    existing: dict[str, Any], template_name: Optional[str], detected_tz: str
+) -> dict[str, Any]:
     defaults = dict(existing)
     if not template_name:
         return defaults
@@ -2288,7 +2721,14 @@ def _profile_payload_from_args(
     if birth is not None:
         profile["birth"] = birth.model_dump(exclude_none=True)
 
-    for field in ("zodiac_system", "ayanamsa", "house_system", "node_type", "tenant_id", "wheel_theme"):
+    for field in (
+        "zodiac_system",
+        "ayanamsa",
+        "house_system",
+        "node_type",
+        "tenant_id",
+        "wheel_theme",
+    ):
         value = getattr(args, field, None)
         if value is not None:
             profile[field] = value
@@ -2336,9 +2776,15 @@ def _apply_profile_defaults(args: argparse.Namespace) -> None:
         args.birth_date = birth["date"]
     if getattr(args, "birth_time", None) is None and birth.get("time"):
         args.birth_time = birth["time"]
-    if getattr(args, "lat", None) is None and birth.get("coordinates", {}).get("latitude") is not None:
+    if (
+        getattr(args, "lat", None) is None
+        and birth.get("coordinates", {}).get("latitude") is not None
+    ):
         args.lat = float(birth["coordinates"]["latitude"])
-    if getattr(args, "lon", None) is None and birth.get("coordinates", {}).get("longitude") is not None:
+    if (
+        getattr(args, "lon", None) is None
+        and birth.get("coordinates", {}).get("longitude") is not None
+    ):
         args.lon = float(birth["coordinates"]["longitude"])
     if getattr(args, "timezone", None) is None and birth.get("timezone"):
         args.timezone = birth["timezone"]
@@ -2373,11 +2819,17 @@ def _handle_init(args: argparse.Namespace) -> int:
 
     _print_heading("OPASTRO INIT")
     _print_divider()
-    print(_wrap("Interactive onboarding to save your default profile for repeat report commands."))
+    print(
+        _wrap(
+            "Interactive onboarding to save your default profile for repeat report commands."
+        )
+    )
     if args.template:
         print(_wrap(f"Starter template loaded: {args.template}"))
 
-    user_name = _prompt_text("Default display name for natal charts (optional)", defaults.get("user_name"))
+    user_name = _prompt_text(
+        "Default display name for natal charts (optional)", defaults.get("user_name")
+    )
 
     sign_default = defaults.get("sign")
     while True:
@@ -2392,7 +2844,9 @@ def _handle_init(args: argparse.Namespace) -> int:
             print(f"error: {exc}")
 
     birth_existing = defaults.get("birth") or {}
-    wants_birth = _prompt_bool("Save default birth details", default=bool(birth_existing))
+    wants_birth = _prompt_bool(
+        "Save default birth details", default=bool(birth_existing)
+    )
 
     birth_date = None
     birth_time = None
@@ -2401,12 +2855,22 @@ def _handle_init(args: argparse.Namespace) -> int:
     timezone = None
     if wants_birth:
         birth_date = _prompt_text("Birth date YYYY-MM-DD", birth_existing.get("date"))
-        birth_time = _prompt_text("Birth time HH:MM (optional)", birth_existing.get("time"))
+        birth_time = _prompt_text(
+            "Birth time HH:MM (optional)", birth_existing.get("time")
+        )
         lat_default = birth_existing.get("coordinates", {}).get("latitude")
         lon_default = birth_existing.get("coordinates", {}).get("longitude")
-        lat_raw = _prompt_text("Birth latitude (optional)", str(lat_default) if lat_default is not None else None)
-        lon_raw = _prompt_text("Birth longitude (optional)", str(lon_default) if lon_default is not None else None)
-        timezone = _prompt_text("Timezone", birth_existing.get("timezone") or detected_tz)
+        lat_raw = _prompt_text(
+            "Birth latitude (optional)",
+            str(lat_default) if lat_default is not None else None,
+        )
+        lon_raw = _prompt_text(
+            "Birth longitude (optional)",
+            str(lon_default) if lon_default is not None else None,
+        )
+        timezone = _prompt_text(
+            "Timezone", birth_existing.get("timezone") or detected_tz
+        )
         lat = float(lat_raw) if lat_raw else None
         lon = float(lon_raw) if lon_raw else None
         if not (birth_date or "").strip():
@@ -2417,20 +2881,37 @@ def _handle_init(args: argparse.Namespace) -> int:
             lon = None
             timezone = None
 
-    sections_default = ",".join(defaults.get("sections", [])) if defaults.get("sections") else None
+    sections_default = (
+        ",".join(defaults.get("sections", [])) if defaults.get("sections") else None
+    )
     sections = _prompt_text("Default sections comma list (optional)", sections_default)
-    output_format = _prompt_text("Default output format (text/json/markdown/html)", defaults.get("output_format", "text"))
+    output_format = _prompt_text(
+        "Default output format (text/json/markdown/html)",
+        defaults.get("output_format", "text"),
+    )
 
-    zodiac_system = _prompt_text("Default zodiac system (optional)", defaults.get("zodiac_system"))
+    zodiac_system = _prompt_text(
+        "Default zodiac system (optional)", defaults.get("zodiac_system")
+    )
     ayanamsa = _prompt_text("Default ayanamsa (optional)", defaults.get("ayanamsa"))
-    house_system = _prompt_text("Default house system (optional)", defaults.get("house_system"))
+    house_system = _prompt_text(
+        "Default house system (optional)", defaults.get("house_system")
+    )
     node_type = _prompt_text("Default node type (optional)", defaults.get("node_type"))
     tenant_id = _prompt_text("Default tenant id (optional)", defaults.get("tenant_id"))
-    wheel_theme = _prompt_text("Default natal wheel theme (night/day, optional)", defaults.get("wheel_theme"))
+    wheel_theme = _prompt_text(
+        "Default natal wheel theme (night/day, optional)", defaults.get("wheel_theme")
+    )
     accent = _prompt_text("Default natal accent hex (optional)", defaults.get("accent"))
-    brand_title = _prompt_text("Default natal brand title (optional)", defaults.get("brand_title"))
-    brand_url = _prompt_text("Default natal brand URL (optional)", defaults.get("brand_url"))
-    premium_url = _prompt_text("Default natal premium URL (optional)", defaults.get("premium_url"))
+    brand_title = _prompt_text(
+        "Default natal brand title (optional)", defaults.get("brand_title")
+    )
+    brand_url = _prompt_text(
+        "Default natal brand URL (optional)", defaults.get("brand_url")
+    )
+    premium_url = _prompt_text(
+        "Default natal premium URL (optional)", defaults.get("premium_url")
+    )
 
     profile_args = argparse.Namespace(
         user_name=user_name or None,
@@ -2498,8 +2979,14 @@ def _handle_profile_show(args: argparse.Namespace) -> int:
     profile = store.get_profile(args.name)
     target_name = args.name or store.active_profile_name()
     if not profile or not target_name:
-        raise ValueError("Profile not found. Use `opastro profile list` to inspect available profiles.")
-    payload = {"name": target_name, "active": target_name == store.active_profile_name(), "profile": profile}
+        raise ValueError(
+            "Profile not found. Use `opastro profile list` to inspect available profiles."
+        )
+    payload = {
+        "name": target_name,
+        "active": target_name == store.active_profile_name(),
+        "profile": profile,
+    }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
 
@@ -2595,7 +3082,9 @@ def _handle_explain(args: argparse.Namespace) -> int:
 def _wrap_for_width(text: str, width: int) -> list[str]:
     if width <= 4:
         return [text[: max(1, width)]]
-    parts = textwrap.wrap(text, width=width, break_long_words=False, replace_whitespace=False)
+    parts = textwrap.wrap(
+        text, width=width, break_long_words=False, replace_whitespace=False
+    )
     return parts if parts else [""]
 
 
@@ -2627,10 +3116,12 @@ def _run_ui(payload) -> int:
             try:
                 curses.start_color()
                 curses.use_default_colors()
-                curses.init_pair(1, curses.COLOR_GREEN, -1)   # accent
-                curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_GREEN)  # selected row
-                curses.init_pair(3, curses.COLOR_WHITE, -1)   # body
-                curses.init_pair(4, curses.COLOR_CYAN, -1)    # meta
+                curses.init_pair(1, curses.COLOR_GREEN, -1)  # accent
+                curses.init_pair(
+                    2, curses.COLOR_BLACK, curses.COLOR_GREEN
+                )  # selected row
+                curses.init_pair(3, curses.COLOR_WHITE, -1)  # body
+                curses.init_pair(4, curses.COLOR_CYAN, -1)  # meta
                 theme["header"] = curses.color_pair(1) | curses.A_BOLD
                 theme["accent"] = curses.color_pair(1) | curses.A_BOLD
                 theme["selected"] = curses.color_pair(2) | curses.A_BOLD
@@ -2735,9 +3226,7 @@ def _run_ui(payload) -> int:
                     attr = theme["muted"]
                 _safe_add(y, right_x, line, right_w, attr)
 
-            footer = (
-                "q/esc quit • ↑↓ or j/k section • enter factors • pgup/pgdn scroll • g top • G end"
-            )
+            footer = "q/esc quit • ↑↓ or j/k section • enter factors • pgup/pgdn scroll • g top • G end"
             _safe_add(height - 1, 0, footer, width - 1, theme["muted"])
 
             stdscr.refresh()
@@ -2772,7 +3261,9 @@ def _handle_ui(args: argparse.Namespace) -> int:
     payload = service.generate(_build_horoscope_request(args))
 
     if args.no_interactive or not sys.stdout.isatty():
-        print("UI fallback mode (non-interactive). Use without --no-interactive in a TTY terminal.")
+        print(
+            "UI fallback mode (non-interactive). Use without --no-interactive in a TTY terminal."
+        )
         return _render_output(payload, output_format="text", export_path=args.export)
 
     try:
@@ -2800,8 +3291,12 @@ def _resolve_batch_dates(args: argparse.Namespace) -> list[date]:
         return [_parse_date(args.target_date)]
     if args.date_from or args.date_to:
         if not args.date_from or not args.date_to:
-            raise ValueError("Both --date-from and --date-to are required for date ranges.")
-        return _date_range(_parse_date(args.date_from), _parse_date(args.date_to), args.step_days)
+            raise ValueError(
+                "Both --date-from and --date-to are required for date ranges."
+            )
+        return _date_range(
+            _parse_date(args.date_from), _parse_date(args.date_to), args.step_days
+        )
     return [date.today()]
 
 
@@ -2810,6 +3305,8 @@ def _batch_extension(fmt: str) -> str:
 
 
 def _handle_batch(args: argparse.Namespace) -> int:
+    from tqdm import tqdm
+
     _apply_profile_defaults(args)
     if args.kind == "planet" and not args.planet:
         raise ValueError("--planet is required for kind=planet.")
@@ -2821,6 +3318,8 @@ def _handle_batch(args: argparse.Namespace) -> int:
     exports: list[str] = []
     rendered_blobs: list[str] = []
     json_rows: list[dict[str, Any]] = []
+    total_items = len(signs) * len(dates)
+    pbar = tqdm(total=total_items, desc="Batch generating", unit="report")
     for target in dates:
         for sign in signs:
             item_args = argparse.Namespace(**vars(args))
@@ -2830,19 +3329,20 @@ def _handle_batch(args: argparse.Namespace) -> int:
 
             if args.output_format == "json" and not args.export_dir:
                 json_rows.append(payload.model_dump(mode="json"))
-                continue
-
-            rendered = _report_to_string(payload, args.output_format)
-            if args.export_dir:
-                ext = _batch_extension(args.output_format)
-                filename = f"{args.kind}_{payload.period.value}_{payload.sign}_{target.isoformat()}{ext}"
-                target_path = Path(args.export_dir).expanduser() / filename
-                _save_export(rendered, str(target_path))
-                exports.append(str(target_path))
             else:
-                rendered_blobs.append(
-                    f"=== {args.kind.upper()} {payload.sign} {payload.period.value} {target.isoformat()} ===\n{rendered}"
-                )
+                rendered = _report_to_string(payload, args.output_format)
+                if args.export_dir:
+                    ext = _batch_extension(args.output_format)
+                    filename = f"{args.kind}_{payload.period.value}_{payload.sign}_{target.isoformat()}{ext}"
+                    target_path = Path(args.export_dir).expanduser() / filename
+                    _save_export(rendered, str(target_path))
+                    exports.append(str(target_path))
+                else:
+                    rendered_blobs.append(
+                        f"=== {args.kind.upper()} {payload.sign} {payload.period.value} {target.isoformat()} ===\n{rendered}"
+                    )
+            pbar.update(1)
+    pbar.close()
 
     if args.output_format == "json" and not args.export_dir:
         print(json.dumps(json_rows, indent=2))
@@ -2850,11 +3350,14 @@ def _handle_batch(args: argparse.Namespace) -> int:
         print("\n\n".join(rendered_blobs))
 
     print(
-        f"batch summary: generated={len(signs) * len(dates)} signs={len(signs)} dates={len(dates)} kind={args.kind}",
+        f"batch summary: generated={total_items} signs={len(signs)} dates={len(dates)} kind={args.kind}",
         file=sys.stderr,
     )
     if exports:
-        print(f"batch export: wrote {len(exports)} files to {Path(args.export_dir).expanduser()}", file=sys.stderr)
+        print(
+            f"batch export: wrote {len(exports)} files to {Path(args.export_dir).expanduser()}",
+            file=sys.stderr,
+        )
     return 0
 
 
@@ -2892,19 +3395,32 @@ def _handle_planet(args: argparse.Namespace) -> int:
 
 
 def _handle_natal(args: argparse.Namespace) -> int:
+    from tqdm import tqdm
+
     _apply_profile_defaults(args)
     service = HoroscopeService(ServiceConfig())
     request = _build_natal_request(args)
-    report = service.generate_natal_birthchart(request)
 
-    if args.json:
-        print(report.model_dump_json(indent=2))
-    else:
-        print(_render_natal_text(report))
+    # Progress for generation
+    with tqdm(
+        total=2,
+        desc="Natal report",
+        unit="step",
+        disable=sys.stdout.isatty() is False and os.getenv("CI") == "1",
+    ) as pbar:
+        report = service.generate_natal_birthchart(request)
+        pbar.update(1)
+
+        if args.json:
+            print(report.model_dump_json(indent=2))
+        else:
+            print(_render_natal_text(report))
+        pbar.update(1)
 
     exports = _export_natal_assets(report, args)
-    for target in exports:
-        print(f"saved output to {target}", file=sys.stderr)
+    if exports:
+        for target in tqdm(exports, desc="Exporting assets", unit="file", leave=False):
+            print(f"saved output to {target}", file=sys.stderr)
     return 0
 
 
@@ -2957,7 +3473,9 @@ def _handle_render_planetary_scene(args: argparse.Namespace) -> int:
 
 
 def _handle_serve(args: argparse.Namespace) -> int:
-    uvicorn.run("horoscope_engine.main:app", host=args.host, port=args.port, reload=args.reload)
+    uvicorn.run(
+        "horoscope_engine.main:app", host=args.host, port=args.port, reload=args.reload
+    )
     return 0
 
 
@@ -2970,7 +3488,9 @@ def _known_command_tokens() -> list[str]:
 
 
 def _suggest_command(token: str) -> str:
-    suggestions = difflib.get_close_matches(token, _known_command_tokens(), n=3, cutoff=0.45)
+    suggestions = difflib.get_close_matches(
+        token, _known_command_tokens(), n=3, cutoff=0.45
+    )
     if suggestions:
         return f"Unknown command '{token}'. Did you mean: {', '.join(suggestions)}?"
     return f"Unknown command '{token}'. Run `opastro --help`."
@@ -3016,10 +3536,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             failure_category="argparse" if code else None,
         )
     try:
-        analytics_command = _canonical_command_name(getattr(args, "command", analytics_command))
+        analytics_command = _canonical_command_name(
+            getattr(args, "command", analytics_command)
+        )
         if hasattr(args, "handler"):
             code = int(args.handler(args))
-            return _analytics_exit(command=analytics_command, started_at=started_at, exit_code=code)
+            return _analytics_exit(
+                command=analytics_command, started_at=started_at, exit_code=code
+            )
         print(f"error: Unsupported command: {args.command}", file=sys.stderr)
         return _analytics_exit(
             command=analytics_command,

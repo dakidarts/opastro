@@ -76,7 +76,9 @@ def __dir__() -> list[str]:
     for module_name in _SEARCH_MODULES:
         module: ModuleType = import_module(module_name)
         names.update(getattr(module, "__all__", []))
-        names.update(name for name in module.__dict__.keys() if not name.startswith("_"))
+        names.update(
+            name for name in module.__dict__.keys() if not name.startswith("_")
+        )
     return sorted(names)
 
 

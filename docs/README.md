@@ -69,12 +69,13 @@ Then continue with [01-quickstart.md](./01-quickstart.md) for the full command t
 - [05-rendering-system.md](./05-rendering-system.md)
 - [10-factor-drivers-reference.md](./10-factor-drivers-reference.md)
 - [11-editorial-style-guide.md](./11-editorial-style-guide.md)
+- [12-personalization-playbook.md](./12-personalization-playbook.md)
 
-## Runtime Docs
+## Runtime & Operations
 
 - [07-operations-and-env.md](./07-operations-and-env.md)
 - [09-troubleshooting.md](./09-troubleshooting.md)
-- [12-personalization-playbook.md](./12-personalization-playbook.md)
+- [13-docker-deployment.md](./13-docker-deployment.md)
 
 ## Open-Core Boundary
 

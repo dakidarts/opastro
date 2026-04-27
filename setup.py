@@ -23,16 +23,19 @@ class OpastroSdist(_sdist):
         self.filelist.files = [
             path
             for path in self.filelist.files
-            if not path.startswith(_SDIST_EXCLUDE_PREFIXES) and not path.endswith(_SDIST_EXCLUDE_SUFFIXES)
+            if not path.startswith(_SDIST_EXCLUDE_PREFIXES)
+            and not path.endswith(_SDIST_EXCLUDE_SUFFIXES)
         ]
 
     def make_release_tree(self, base_dir: str, files: list[str]) -> None:
         filtered = [
             path
             for path in files
-            if not path.startswith(_SDIST_EXCLUDE_PREFIXES) and not path.endswith(_SDIST_EXCLUDE_SUFFIXES)
+            if not path.startswith(_SDIST_EXCLUDE_PREFIXES)
+            and not path.endswith(_SDIST_EXCLUDE_SUFFIXES)
         ]
         super().make_release_tree(base_dir, filtered)
+
 
 if __name__ == "__main__":
     setup(cmdclass={"sdist": OpastroSdist})

@@ -70,6 +70,26 @@ Fields:
 - `user_name` (optional, chart personalization display name)
 - `zodiac_system`, `ayanamsa`, `house_system`, `node_type` (optional)
 - `tenant_id` (optional, max length 64)
+- `include_fixed_stars` (optional, default `false`)
+- `include_arabic_parts` (optional, default `false`)
+
+## `SynastryRequest`
+
+Fields:
+- `birth1` (required)
+- `birth2` (required)
+- `user_name1`, `user_name2` (optional)
+- `zodiac_system`, `ayanamsa`, `house_system`, `node_type` (optional)
+- `tenant_id` (optional)
+
+## `TransitTimelineRequest`
+
+Fields:
+- `birth` (required)
+- `date_from` (optional, defaults to today)
+- `date_to` (optional, defaults to 90 days after `date_from`)
+- `zodiac_system`, `ayanamsa`, `house_system`, `node_type` (optional)
+- `tenant_id` (optional)
 
 ## Shared Birth Model
 
@@ -102,6 +122,32 @@ Top-level fields:
 - `snapshot` (`ChartSnapshot`)
 - `notable_events` (list of strings)
 - `premium_insights` (optional)
+
+### `snapshot` (`ChartSnapshot`)
+
+Core fields:
+- `timestamp`, `zodiac_system`, `ayanamsa`, `ayanamsa_value`, `ayanamsa_system`
+- `sun_sign`, `moon_sign`, `rising_sign`
+- `house_system`, `house_cusps`
+- `positions[]` (`BodyPosition`)
+- `aspects[]` (`Aspect`)
+
+Optional advanced fields:
+- `fixed_stars[]` (`FixedStarPosition`) — present when `include_fixed_stars=true`
+- `arabic_parts[]` (`ArabicPartPosition`) — present when `include_arabic_parts=true` and houses are available
+
+### `FixedStarPosition`
+
+- `name`, `longitude`, `latitude`, `sign`, `degree_in_sign`
+- `magnitude` (brightness)
+- `nature` (`benefic`, `malefic`, `mixed`, `neutral`)
+- `orb` (recommended conjunction orb in degrees)
+
+### `ArabicPartPosition`
+
+- `name` (e.g. `Part of Fortune`, `Part of Spirit`)
+- `longitude`, `sign`, `degree_in_sign`
+- `formula` (text description of the calculation)
 
 ### `premium_insights` (`NatalPremiumInsights`)
 
@@ -162,6 +208,51 @@ Fields:
 - `highlights[]`
 - `cautions[]`
 - `actions[]`
+
+## Response Model: `SynastryResponse`
+
+Top-level fields:
+- `report_type`
+- `user_name1`, `user_name2`
+- `snapshot1`, `snapshot2` (`ChartSnapshot`)
+- `inter_aspects[]` (`SynastryAspect`)
+- `house_overlays[]` (`SynastryOverlay`)
+- `scores[]` (`SynastryScore`)
+- `composite_summary`
+
+### `SynastryAspect`
+
+- `body1`, `body2`, `aspect`, `orb`, `exact`, `applying`
+- `nature` (`supportive`, `challenging`, `neutral`)
+
+### `SynastryOverlay`
+
+- `house` (1-12)
+- `cusp_sign`
+- `planets[]`
+- `interpretation_hint`
+
+### `SynastryScore`
+
+- `category` (`harmony`, `intensity`, `house_overlays`)
+- `score` (0-100)
+- `emphasis`
+
+## Response Model: `TransitTimelineResponse`
+
+Top-level fields:
+- `birth`
+- `date_from`, `date_to`
+- `events[]` (`TransitEvent`)
+- `event_count`
+
+### `TransitEvent`
+
+- `date`
+- `transit_planet`, `natal_planet`
+- `aspect`, `orb`, `exact`
+- `intensity` (0.0-1.0)
+- `summary`
 
 ## Natal Asset Contracts
 

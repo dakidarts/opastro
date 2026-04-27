@@ -127,7 +127,9 @@ class V2ContentRepository:
         if not matches:
             return None
 
-        file_path = matches[stable_index(f"{seed}|{factor_type}|any_value", len(matches))]
+        file_path = matches[
+            stable_index(f"{seed}|{factor_type}|any_value", len(matches))
+        ]
         rel = file_path.relative_to(self.root).parts
         factor_value = rel[4] if len(rel) > 4 else "unknown"
         return self._selection_from_file(
@@ -160,7 +162,9 @@ class V2ContentRepository:
         files = sorted(intensity_dir.glob("*.json"))
         if not files:
             return None
-        file_path = files[stable_index(f"{seed}|{factor_type}|{factor_value}", len(files))]
+        file_path = files[
+            stable_index(f"{seed}|{factor_type}|{factor_value}", len(files))
+        ]
         return self._selection_from_file(
             file_path=file_path,
             period=period,
@@ -232,7 +236,9 @@ class V2ContentRepository:
                 continue
             variant_list = self._variant_list_for_value(value, normalized_factor_value)
             if variant_list:
-                chosen = variant_list[stable_index(f"{seed}|variant|{file_path.name}", len(variant_list))]
+                chosen = variant_list[
+                    stable_index(f"{seed}|variant|{file_path.name}", len(variant_list))
+                ]
                 return self._build_selection(
                     period=period,
                     factor_type=key,
@@ -248,7 +254,9 @@ class V2ContentRepository:
         variant_list = first_values[first_value_key]
         if not variant_list:
             return None
-        chosen = variant_list[stable_index(f"{seed}|variant|{file_path.name}", len(variant_list))]
+        chosen = variant_list[
+            stable_index(f"{seed}|variant|{file_path.name}", len(variant_list))
+        ]
         return self._build_selection(
             period=period,
             factor_type=first_type,
@@ -277,7 +285,9 @@ class V2ContentRepository:
             source_file=str(file_path),
         )
 
-    def _variant_list_for_value(self, value_map: dict, normalized_factor_value: str) -> Optional[list]:
+    def _variant_list_for_value(
+        self, value_map: dict, normalized_factor_value: str
+    ) -> Optional[list]:
         for key, variants in value_map.items():
             if normalize_key(key) == normalized_factor_value:
                 return variants

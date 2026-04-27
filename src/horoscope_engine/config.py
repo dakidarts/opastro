@@ -16,6 +16,10 @@ def _default_ephemeris_path() -> Optional[str]:
     local = Path(__file__).resolve().parents[2] / "data" / "ephemeris"
     if local.exists():
         return str(local)
+    # Check user cache for downloaded ephemeris files.
+    cache_dir = Path.home() / ".cache" / "opastro" / "ephemeris"
+    if cache_dir.exists():
+        return str(cache_dir)
     # Auto-detect bundled Swiss files from common Python package installs (e.g. kerykeion).
     try:
         for base in site.getsitepackages():
@@ -44,6 +48,7 @@ class EphemerisConfig:
 @dataclass(frozen=True)
 class ServiceConfig:
     cache_ttl_seconds: int = 3600
+    cache_sqlite_path: Optional[str] = None
     default_timezone: str = "UTC"
     default_latitude: float = 0.0
     default_longitude: float = 0.0

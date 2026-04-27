@@ -10,11 +10,7 @@ def _normalize_sections(sections: Optional[Sequence[str]]) -> str:
     if not sections:
         return "default"
     normalized = sorted(
-        {
-            str(section).strip().lower()
-            for section in sections
-            if str(section).strip()
-        }
+        {str(section).strip().lower() for section in sections if str(section).strip()}
     )
     return ",".join(normalized) if normalized else "default"
 
@@ -65,6 +61,8 @@ def build_cache_key(
     house_system: Optional[str],
     node_type: Optional[str],
     user_name: Optional[str] = None,
+    include_fixed_stars: bool = False,
+    include_arabic_parts: bool = False,
     key_namespace: str = "horoscope",
 ) -> str:
     tenant = tenant_id or "public"
@@ -78,9 +76,14 @@ def build_cache_key(
         birth_longitude=birth_longitude,
         birth_timezone=birth_timezone,
     )
+    extras = ""
+    if include_fixed_stars:
+        extras += ":fs"
+    if include_arabic_parts:
+        extras += ":ap"
     return (
         f"{key_namespace}:{tenant}:{period.value}:{source}:{sign or 'auto'}:{date_part}:"
         f"{sections_key}:{birth_key}:"
         f"{zodiac_system or 'default'}:{ayanamsa or 'default'}:{house_system or 'default'}:{node_type or 'default'}:"
-        f"{(user_name or 'none').strip() or 'none'}"
+        f"{(user_name or 'none').strip() or 'none'}{extras}"
     ).lower()

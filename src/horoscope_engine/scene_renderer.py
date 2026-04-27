@@ -5,12 +5,12 @@ planetary longitudes onto a stylised heliocentric (or geocentric-abstract) map
 with orbit ellipses, glowing Sun, labelled bodies, optional aspect connectors,
 and a perspective grid.
 """
+
 from __future__ import annotations
 
 import math
 import random
 import subprocess
-from typing import Optional
 
 from .models import ChartSnapshot
 
@@ -109,8 +109,14 @@ ORBIT_RADII: dict[str, float] = {
 }
 
 MAJOR_PLANET_NAMES = {
-    "Mercury", "Venus", "Mars", "Jupiter",
-    "Saturn", "Uranus", "Neptune", "Pluto",
+    "Mercury",
+    "Venus",
+    "Mars",
+    "Jupiter",
+    "Saturn",
+    "Uranus",
+    "Neptune",
+    "Pluto",
 }
 
 
@@ -118,11 +124,14 @@ MAJOR_PLANET_NAMES = {
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _star_field(width: int, height: int, palette: dict[str, str], seed: int = 42) -> str:
+
+def _star_field(
+    width: int, height: int, palette: dict[str, str], seed: int = 42
+) -> str:
     """Generate a scattering of background stars and subtle nebulas."""
     rng = random.Random(seed)
     parts: list[str] = ['<g id="stars">']
-    
+
     # Subtle nebulas
     parts.append(f'''
     <defs>
@@ -146,7 +155,9 @@ def _star_field(width: int, height: int, palette: dict[str, str], seed: int = 42
         opacity = rng.uniform(0.15, 0.9)
         colour = palette["star_bright"] if rng.random() > 0.6 else palette["star_dim"]
         if r >= 1.5:
-             parts.append(f'<circle cx="{x}" cy="{y}" r="{r+1}" fill="{colour}" opacity="{opacity * 0.2}" filter="url(#bloom)"/>')
+            parts.append(
+                f'<circle cx="{x}" cy="{y}" r="{r + 1}" fill="{colour}" opacity="{opacity * 0.2}" filter="url(#bloom)"/>'
+            )
         parts.append(
             f'<circle cx="{x}" cy="{y}" r="{r}" fill="{colour}" opacity="{opacity:.2f}"/>'
         )
@@ -158,14 +169,14 @@ def _svg_defs(palette: dict[str, str]) -> str:
     """Reusable SVG definitions: gradients, glow filters."""
     return f"""<defs>
   <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
-    <stop offset="0%"   stop-color="{palette['sun_core']}" stop-opacity="1"/>
-    <stop offset="15%"  stop-color="{palette['sun_mid']}"  stop-opacity="0.85"/>
-    <stop offset="50%"  stop-color="{palette['sun_outer']}" stop-opacity="0.25"/>
-    <stop offset="100%" stop-color="{palette['sun_outer']}" stop-opacity="0"/>
+    <stop offset="0%"   stop-color="{palette["sun_core"]}" stop-opacity="1"/>
+    <stop offset="15%"  stop-color="{palette["sun_mid"]}"  stop-opacity="0.85"/>
+    <stop offset="50%"  stop-color="{palette["sun_outer"]}" stop-opacity="0.25"/>
+    <stop offset="100%" stop-color="{palette["sun_outer"]}" stop-opacity="0"/>
   </radialGradient>
   <radialGradient id="dotGlow" cx="50%" cy="50%" r="50%">
-    <stop offset="0%"   stop-color="{palette['glow']}" stop-opacity="0.6"/>
-    <stop offset="100%" stop-color="{palette['glow']}" stop-opacity="0"/>
+    <stop offset="0%"   stop-color="{palette["glow"]}" stop-opacity="0.6"/>
+    <stop offset="100%" stop-color="{palette["glow"]}" stop-opacity="0"/>
   </radialGradient>
   <filter id="bloom" x="-50%" y="-50%" width="200%" height="200%">
     <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
@@ -185,10 +196,15 @@ def _svg_defs(palette: dict[str, str]) -> str:
 
 
 def _perspective_grid(
-    cx: float, cy: float, tilt: float, palette: dict[str, str],
+    cx: float,
+    cy: float,
+    tilt: float,
+    palette: dict[str, str],
 ) -> str:
     """Draw the faux-3D perspective grid (ellipses + radial lines)."""
-    parts: list[str] = [f'<g id="grid" stroke="{palette["grid"]}" stroke-width="0.6" fill="none" opacity="0.45">']
+    parts: list[str] = [
+        f'<g id="grid" stroke="{palette["grid"]}" stroke-width="0.6" fill="none" opacity="0.45">'
+    ]
     for r in range(80, 900, 80):
         parts.append(f'<ellipse cx="{cx}" cy="{cy}" rx="{r}" ry="{r * tilt}"/>')
     for angle in range(0, 360, 15):
@@ -200,74 +216,109 @@ def _perspective_grid(
     return "\n".join(parts)
 
 
-def _footer_data_table(width: float, height: float, snapshot: ChartSnapshot, bodies_to_render: list, palette: dict[str, str]) -> str:
+def _footer_data_table(
+    width: float,
+    height: float,
+    snapshot: ChartSnapshot,
+    bodies_to_render: list,
+    palette: dict[str, str],
+) -> str:
     """Draw a minimalist, beautiful table of planetary positions and aspects at the bottom."""
     parts = []
-    
+
     bodies_to_show = [b.name for b in bodies_to_render]
     num_bodies = len(bodies_to_show)
     bodies_rows = math.ceil(num_bodies / 6) if num_bodies > 0 else 0
-    
-    aspects = sorted((a for a in snapshot.aspects if a.body1 in bodies_to_show and a.body2 in bodies_to_show), key=lambda a: a.orb)[:4]
+
+    aspects = sorted(
+        (
+            a
+            for a in snapshot.aspects
+            if a.body1 in bodies_to_show and a.body2 in bodies_to_show
+        ),
+        key=lambda a: a.orb,
+    )[:4]
     aspect_rows = math.ceil(len(aspects) / 2)
-    
+
     max_rows = max(bodies_rows, aspect_rows, 2)
     box_height = max(100, 45 + (max_rows - 1) * 24 + 30)
     table_y = height - box_height - 20
-    
-    parts.append(f'<rect x="20" y="{table_y}" width="{width - 40}" height="{box_height}" fill="{palette["bg"]}" opacity="0.65" rx="8" />')
-    parts.append(f'<rect x="20" y="{table_y}" width="{width - 40}" height="{box_height}" fill="none" stroke="{palette["grid"]}" stroke-width="1" rx="8" opacity="0.8" />')
-    
+
+    parts.append(
+        f'<rect x="20" y="{table_y}" width="{width - 40}" height="{box_height}" fill="{palette["bg"]}" opacity="0.65" rx="8" />'
+    )
+    parts.append(
+        f'<rect x="20" y="{table_y}" width="{width - 40}" height="{box_height}" fill="none" stroke="{palette["grid"]}" stroke-width="1" rx="8" opacity="0.8" />'
+    )
+
     # Col 1: Planet positions
-    parts.append(f'<text x="40" y="{table_y + 24}" fill="{palette["label"]}" font-size="10" font-weight="600" letter-spacing="2" opacity="0.9">PLANETARY POSITIONS</text>')
-    
+    parts.append(
+        f'<text x="40" y="{table_y + 24}" fill="{palette["label"]}" font-size="10" font-weight="600" letter-spacing="2" opacity="0.9">PLANETARY POSITIONS</text>'
+    )
+
     y_offset = table_y + 45
     x_offset = 40
     col_width = 85
-    
+
     for i, bname in enumerate(bodies_to_show):
         pos = next((p for p in snapshot.positions if p.name == bname), None)
         if not pos:
             continue
-        
+
         row = i // 6
         col = i % 6
-        
+
         px = x_offset + col * col_width
         py = y_offset + row * 24
-        
+
         deg = int(pos.degree_in_sign)
         rx = " Rx" if pos.retrograde else ""
         text_val = f"{deg}° {pos.sign[:3]}{rx}"
-        
-        parts.append(f'<text x="{px}" y="{py}" fill="{palette["dot"]}" font-size="10" font-weight="500">{bname.upper()}</text>')
-        parts.append(f'<text x="{px}" y="{py + 12}" fill="{palette["label"]}" font-size="9" opacity="0.75">{text_val}</text>')
-    
+
+        parts.append(
+            f'<text x="{px}" y="{py}" fill="{palette["dot"]}" font-size="10" font-weight="500">{bname.upper()}</text>'
+        )
+        parts.append(
+            f'<text x="{px}" y="{py + 12}" fill="{palette["label"]}" font-size="9" opacity="0.75">{text_val}</text>'
+        )
+
     # Col 2: Aspects
     divider_x = x_offset + 6 * col_width + 5
-    parts.append(f'<line x1="{divider_x}" y1="{table_y + 15}" x2="{divider_x}" y2="{table_y + box_height - 15}" stroke="{palette["grid"]}" stroke-width="1.5" />')
-    
+    parts.append(
+        f'<line x1="{divider_x}" y1="{table_y + 15}" x2="{divider_x}" y2="{table_y + box_height - 15}" stroke="{palette["grid"]}" stroke-width="1.5" />'
+    )
+
     aspect_x = divider_x + 25
-    parts.append(f'<text x="{aspect_x}" y="{table_y + 24}" fill="{palette["label"]}" font-size="10" font-weight="600" letter-spacing="2" opacity="0.9">KEY ASPECTS</text>')
-    
+    parts.append(
+        f'<text x="{aspect_x}" y="{table_y + 24}" fill="{palette["label"]}" font-size="10" font-weight="600" letter-spacing="2" opacity="0.9">KEY ASPECTS</text>'
+    )
+
     for i, asp in enumerate(aspects):
         row = i // 2
         col = i % 2
-        
+
         px = aspect_x + col * 140
         py = y_offset + row * 24
-        
+
         asp_name = asp.aspect.upper()
         orb = f"{asp.orb:.1f}° orb"
-        
-        parts.append(f'<text x="{px}" y="{py}" fill="{palette["dot"]}" font-size="10" font-weight="500">{asp.body1[:3]} {asp_name} {asp.body2[:3]}</text>')
-        parts.append(f'<text x="{px}" y="{py + 12}" fill="{palette["label"]}" font-size="9" opacity="0.75">{orb}</text>')
-        
+
+        parts.append(
+            f'<text x="{px}" y="{py}" fill="{palette["dot"]}" font-size="10" font-weight="500">{asp.body1[:3]} {asp_name} {asp.body2[:3]}</text>'
+        )
+        parts.append(
+            f'<text x="{px}" y="{py + 12}" fill="{palette["label"]}" font-size="9" opacity="0.75">{orb}</text>'
+        )
+
     return "\\n".join(parts)
 
 
 def _body_xy(
-    longitude: float, radius: float, cx: float, cy: float, tilt: float,
+    longitude: float,
+    radius: float,
+    cx: float,
+    cy: float,
+    tilt: float,
 ) -> tuple[float, float]:
     """Project a body's ecliptic longitude onto the 2D/perspective canvas."""
     rad = math.radians(longitude - 90)  # 0° points upward
@@ -277,6 +328,7 @@ def _body_xy(
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def _generate_planetary_scene_svg_content(
     snapshot: ChartSnapshot,
@@ -300,7 +352,7 @@ def _generate_planetary_scene_svg_content(
     parts.append(
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
-        f'style="background:{bg_style};font-family:\'Space Grotesk\',\'Inter\',\'Segoe UI\',sans-serif">'
+        f"style=\"background:{bg_style};font-family:'Space Grotesk','Inter','Segoe UI',sans-serif\">"
     )
 
     # Defs (gradients, filters)
@@ -308,7 +360,9 @@ def _generate_planetary_scene_svg_content(
 
     # Solid background rect to ensure PNG converters respect the background color
     if not transparent_bg:
-        parts.append(f'<rect width="{width}" height="{height}" fill="{palette["bg"]}" />')
+        parts.append(
+            f'<rect width="{width}" height="{height}" fill="{palette["bg"]}" />'
+        )
 
     # Star field
     parts.append(_star_field(width, height, palette))
@@ -336,7 +390,7 @@ def _generate_planetary_scene_svg_content(
 
     # Orbit ellipses
     if include_orbits:
-        parts.append(f'<g id="orbits" fill="none">')
+        parts.append('<g id="orbits" fill="none">')
         drawn_radii: set[float] = set()
         for pos in bodies_to_render:
             r = ORBIT_RADII[pos.name]
@@ -355,7 +409,9 @@ def _generate_planetary_scene_svg_content(
 
     # Aspect connector lines (subtle)
     if include_aspects and snapshot.aspects:
-        parts.append(f'<g id="aspects" stroke="{palette["aspect"]}" stroke-width="0.5" opacity="0.3">')
+        parts.append(
+            f'<g id="aspects" stroke="{palette["aspect"]}" stroke-width="0.5" opacity="0.3">'
+        )
         body_positions: dict[str, tuple[float, float]] = {}
         for pos in bodies_to_render:
             r = ORBIT_RADII[pos.name]
@@ -371,7 +427,7 @@ def _generate_planetary_scene_svg_content(
         parts.append("</g>")
 
     # Planet dots + labels
-    parts.append(f'<g id="bodies">')
+    parts.append('<g id="bodies">')
     for pos in bodies_to_render:
         r = ORBIT_RADII[pos.name]
         px, py = _body_xy(pos.longitude, r, cx, cy, tilt)
@@ -469,11 +525,16 @@ def build_planetary_scene_png(
     )
     try:
         import cairosvg  # type: ignore[import-untyped]
+
         cairosvg.svg2png(url=svg_path, write_to=output_path, scale=2.0)
     except Exception as e:
         try:
             subprocess.run(["rsvg-convert", "-o", output_path, svg_path], check=True)
         except Exception as e2:
             import sys
-            print(f"Warning: Could not convert SVG to PNG. Requires 'cairosvg' or 'rsvg-convert'. SVG saved to {svg_path}", file=sys.stderr)
+
+            print(
+                f"Warning: Could not convert SVG to PNG. Requires 'cairosvg' or 'rsvg-convert'. SVG saved to {svg_path}",
+                file=sys.stderr,
+            )
             print(f"Details: {e} | {e2}", file=sys.stderr)

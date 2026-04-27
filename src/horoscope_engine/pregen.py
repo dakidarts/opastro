@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Iterable, List
 
+from tqdm import tqdm
+
 from .cache import CacheProvider
 from .cache_keys import build_cache_key
 from .models import HoroscopeRequest, Period, Section, ZODIAC_SIGNS
@@ -29,9 +31,14 @@ def pregenerate(
     signs: Iterable[str] = ZODIAC_SIGNS,
     sections: List[Section] | None = None,
     tenant_id: str | None = None,
+    progress: bool = True,
 ) -> int:
+    sign_list = list(signs)
+    iterator = (
+        tqdm(sign_list, desc="Pregenerating", unit="sign") if progress else sign_list
+    )
     total = 0
-    for sign in signs:
+    for sign in iterator:
         request = HoroscopeRequest(
             period=period,
             sign=sign,
@@ -56,6 +63,8 @@ def pregenerate(
             house_system=None,
             node_type=None,
         )
-        cache.set(cache_key, response.model_dump_json(), ttl_seconds=ttl_for_period(period))
+        cache.set(
+            cache_key, response.model_dump_json(), ttl_seconds=ttl_for_period(period)
+        )
         total += 1
     return total

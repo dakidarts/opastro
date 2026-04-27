@@ -171,6 +171,33 @@ diff <(echo "$RESP1" | jq -S .) <(echo "$RESP2" | jq -S .)
 
 ## Ephemeris Issues
 
+### Missing asteroid / planet data (Eris, Chiron, etc.)
+
+Symptom:
+- `RuntimeWarning: Skipping Eris: Swiss Ephemeris data not available...`
+- Minor bodies missing from natal chart output.
+
+Cause:
+- Optional Swiss Ephemeris files (`seas_18.se1`, `sefstars.txt`) are not present.
+
+Fix (auto-download):
+
+```bash
+opastro doctor --download-ephemeris
+```
+
+This downloads missing files to `~/.cache/opastro/ephemeris/` and makes them available automatically on subsequent runs.
+
+Fix (manual):
+
+```bash
+# Download from Astro.com
+mkdir -p ~/.cache/opastro/ephemeris
+curl -L -o ~/.cache/opastro/ephemeris/seas_18.se1 \
+  https://www.astro.com/swisseph/ephe/seas_18.se1
+export SE_EPHE_PATH=~/.cache/opastro/ephemeris
+```
+
 ### Unexpected sign placements / planets look off
 
 Cause:
@@ -207,6 +234,33 @@ curl -X POST http://127.0.0.1:8000/admin/pregenerate \
   -d '{"period":"daily","target_date":"2026-04-03"}'
 ```
 
+### API returns `401 Unauthorized`
+
+Cause:
+- `OPASTRO_REQUIRE_API_KEY=1` is set but `X-API-Key` header is missing or invalid.
+
+Fix:
+
+```bash
+curl -X POST http://127.0.0.1:8000/horoscope \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your_valid_key" \
+  -d '{"period":"daily","sign":"ARIES"}'
+```
+
+### API returns `429 Too Many Requests`
+
+Cause:
+- Rate limit exceeded.
+
+Fix:
+- Reduce request frequency or increase limits via environment:
+
+```bash
+export OPASTRO_RATE_LIMIT_RPS=50
+export OPASTRO_RATE_LIMIT_BURST=100
+```
+
 ### Cache seems stale
 
 Checks:
@@ -220,7 +274,7 @@ Cause:
 - `REDIS_URL` invalid or Redis unavailable.
 
 Fix:
-- Unset `REDIS_URL` to fall back to in-memory TTL cache.
+- Unset `REDIS_URL` to fall back to SQLite on-disk cache.
 - Or fix Redis endpoint/credentials.
 
 ## Startup Healthcheck Messages

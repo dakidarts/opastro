@@ -6,7 +6,15 @@ import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..content_repository import V2ContentRepository, stable_index
-from ..models import ChartSnapshot, FactorDetail, Period, PeriodEvent, PeriodMetrics, Section, SectionInsight
+from ..models import (
+    ChartSnapshot,
+    FactorDetail,
+    Period,
+    PeriodEvent,
+    PeriodMetrics,
+    Section,
+    SectionInsight,
+)
 from .rules import RuleSet
 
 
@@ -237,7 +245,11 @@ EVENT_ANCHOR_OPTIONS = {
     ],
     "monthly": [
         ["Early in the month", "Around mid-month", "Toward month-end"],
-        ["In the opening stretch", "Through the middle of the month", "In the closing stretch"],
+        [
+            "In the opening stretch",
+            "Through the middle of the month",
+            "In the closing stretch",
+        ],
         ["At month start", "By the middle of the month", "Near month-end"],
     ],
     "yearly": [
@@ -349,26 +361,200 @@ LONGFORM_CADENCE_DEFAULT = [
 
 LONGFORM_CADENCE_BY_PERIOD: Dict[Period, Dict[Section, List[str]]] = {
     Period.MONTHLY: {
-        Section.GENERAL: ["intro", "thesis", "breath", "theme", "events", "influences", "contrast", "dynamic_close", "close"],
-        Section.LOVE_SINGLES: ["intro", "theme", "events", "thesis", "influences", "contrast", "dynamic_close", "close"],
-        Section.LOVE_COUPLES: ["intro", "thesis", "focus", "events", "theme", "influences", "dynamic_close", "contrast", "close"],
-        Section.CAREER: ["intro", "focus", "thesis", "breath", "theme", "influences", "events", "contrast", "dynamic_close", "close"],
-        Section.FRIENDSHIP: ["intro", "events", "thesis", "theme", "contrast", "influences", "dynamic_close", "close"],
-        Section.HEALTH: ["intro", "breath", "events", "thesis", "theme", "influences", "contrast", "dynamic_close", "close"],
-        Section.MONEY: ["intro", "thesis", "theme", "events", "contrast", "influences", "dynamic_close", "close"],
-        Section.COMMUNICATION: ["intro", "focus", "thesis", "events", "theme", "contrast", "influences", "dynamic_close", "close"],
-        Section.LIFESTYLE: ["intro", "breath", "theme", "events", "thesis", "influences", "contrast", "dynamic_close", "close"],
+        Section.GENERAL: [
+            "intro",
+            "thesis",
+            "breath",
+            "theme",
+            "events",
+            "influences",
+            "contrast",
+            "dynamic_close",
+            "close",
+        ],
+        Section.LOVE_SINGLES: [
+            "intro",
+            "theme",
+            "events",
+            "thesis",
+            "influences",
+            "contrast",
+            "dynamic_close",
+            "close",
+        ],
+        Section.LOVE_COUPLES: [
+            "intro",
+            "thesis",
+            "focus",
+            "events",
+            "theme",
+            "influences",
+            "dynamic_close",
+            "contrast",
+            "close",
+        ],
+        Section.CAREER: [
+            "intro",
+            "focus",
+            "thesis",
+            "breath",
+            "theme",
+            "influences",
+            "events",
+            "contrast",
+            "dynamic_close",
+            "close",
+        ],
+        Section.FRIENDSHIP: [
+            "intro",
+            "events",
+            "thesis",
+            "theme",
+            "contrast",
+            "influences",
+            "dynamic_close",
+            "close",
+        ],
+        Section.HEALTH: [
+            "intro",
+            "breath",
+            "events",
+            "thesis",
+            "theme",
+            "influences",
+            "contrast",
+            "dynamic_close",
+            "close",
+        ],
+        Section.MONEY: [
+            "intro",
+            "thesis",
+            "theme",
+            "events",
+            "contrast",
+            "influences",
+            "dynamic_close",
+            "close",
+        ],
+        Section.COMMUNICATION: [
+            "intro",
+            "focus",
+            "thesis",
+            "events",
+            "theme",
+            "contrast",
+            "influences",
+            "dynamic_close",
+            "close",
+        ],
+        Section.LIFESTYLE: [
+            "intro",
+            "breath",
+            "theme",
+            "events",
+            "thesis",
+            "influences",
+            "contrast",
+            "dynamic_close",
+            "close",
+        ],
     },
     Period.YEARLY: {
-        Section.GENERAL: ["intro", "theme", "thesis", "breath", "events", "influences", "contrast", "dynamic_close", "close"],
-        Section.LOVE_SINGLES: ["intro", "theme", "thesis", "events", "contrast", "influences", "dynamic_close", "close"],
-        Section.LOVE_COUPLES: ["intro", "thesis", "theme", "events", "influences", "contrast", "dynamic_close", "close"],
-        Section.CAREER: ["intro", "focus", "theme", "thesis", "events", "influences", "dynamic_close", "contrast", "close"],
-        Section.FRIENDSHIP: ["intro", "theme", "events", "thesis", "contrast", "influences", "dynamic_close", "close"],
-        Section.HEALTH: ["intro", "breath", "theme", "events", "thesis", "influences", "dynamic_close", "contrast", "close"],
-        Section.MONEY: ["intro", "theme", "thesis", "events", "influences", "contrast", "dynamic_close", "close"],
-        Section.COMMUNICATION: ["intro", "focus", "thesis", "theme", "contrast", "events", "influences", "dynamic_close", "close"],
-        Section.LIFESTYLE: ["intro", "breath", "theme", "thesis", "events", "contrast", "influences", "dynamic_close", "close"],
+        Section.GENERAL: [
+            "intro",
+            "theme",
+            "thesis",
+            "breath",
+            "events",
+            "influences",
+            "contrast",
+            "dynamic_close",
+            "close",
+        ],
+        Section.LOVE_SINGLES: [
+            "intro",
+            "theme",
+            "thesis",
+            "events",
+            "contrast",
+            "influences",
+            "dynamic_close",
+            "close",
+        ],
+        Section.LOVE_COUPLES: [
+            "intro",
+            "thesis",
+            "theme",
+            "events",
+            "influences",
+            "contrast",
+            "dynamic_close",
+            "close",
+        ],
+        Section.CAREER: [
+            "intro",
+            "focus",
+            "theme",
+            "thesis",
+            "events",
+            "influences",
+            "dynamic_close",
+            "contrast",
+            "close",
+        ],
+        Section.FRIENDSHIP: [
+            "intro",
+            "theme",
+            "events",
+            "thesis",
+            "contrast",
+            "influences",
+            "dynamic_close",
+            "close",
+        ],
+        Section.HEALTH: [
+            "intro",
+            "breath",
+            "theme",
+            "events",
+            "thesis",
+            "influences",
+            "dynamic_close",
+            "contrast",
+            "close",
+        ],
+        Section.MONEY: [
+            "intro",
+            "theme",
+            "thesis",
+            "events",
+            "influences",
+            "contrast",
+            "dynamic_close",
+            "close",
+        ],
+        Section.COMMUNICATION: [
+            "intro",
+            "focus",
+            "thesis",
+            "theme",
+            "contrast",
+            "events",
+            "influences",
+            "dynamic_close",
+            "close",
+        ],
+        Section.LIFESTYLE: [
+            "intro",
+            "breath",
+            "theme",
+            "thesis",
+            "events",
+            "contrast",
+            "influences",
+            "dynamic_close",
+            "close",
+        ],
     },
 }
 
@@ -488,60 +674,116 @@ SECTION_FELT_TONES: Dict[Section, Dict[str, object]] = {
             "opposition": ["relational polarity that asks for cleaner listening"],
         },
         "house": {
-            "third_house": ["a local signal-versus-noise cycle in day-to-day exchanges"],
+            "third_house": [
+                "a local signal-versus-noise cycle in day-to-day exchanges"
+            ],
             "ninth_house": ["pressure to align words with deeper beliefs"],
             "eleventh_house": ["group-message dynamics where tone shifts by audience"],
         },
-        "retrograde": ["review pressure around wording, timing, and conversational repair"],
-        "default": ["a communication cycle where tone, timing, and clarity must work together"],
+        "retrograde": [
+            "review pressure around wording, timing, and conversational repair"
+        ],
+        "default": [
+            "a communication cycle where tone, timing, and clarity must work together"
+        ],
     },
     Section.LIFESTYLE: {
         "transits": {
-            "square_tension": ["friction between pace demands and nervous-system limits"],
-            "retrograde_review": ["a reset cycle around what your routines actually support"],
+            "square_tension": [
+                "friction between pace demands and nervous-system limits"
+            ],
+            "retrograde_review": [
+                "a reset cycle around what your routines actually support"
+            ],
         },
         "house": {
-            "fourth_house": ["home atmosphere becoming the deciding factor in overall steadiness"],
+            "fourth_house": [
+                "home atmosphere becoming the deciding factor in overall steadiness"
+            ],
             "sixth_house": ["maintenance pressure to simplify what is hard to sustain"],
-            "twelfth_house": ["quiet depletion signaling the need for real recovery space"],
+            "twelfth_house": [
+                "quiet depletion signaling the need for real recovery space"
+            ],
         },
-        "retrograde": ["review energy around habits that look productive but feel draining"],
-        "default": ["a lifestyle recalibration about reducing drag and restoring breathable rhythm"],
+        "retrograde": [
+            "review energy around habits that look productive but feel draining"
+        ],
+        "default": [
+            "a lifestyle recalibration about reducing drag and restoring breathable rhythm"
+        ],
     },
     Section.FRIENDSHIP: {
         "transits": {
-            "opposition_conflict": ["social polarity separating familiarity from real trust"],
-            "retrograde_review": ["a friendship review cycle around reciprocity and loyalty"],
-            "networking_energy": ["network momentum that tests who feels supportive versus performative"],
+            "opposition_conflict": [
+                "social polarity separating familiarity from real trust"
+            ],
+            "retrograde_review": [
+                "a friendship review cycle around reciprocity and loyalty"
+            ],
+            "networking_energy": [
+                "network momentum that tests who feels supportive versus performative"
+            ],
         },
         "house": {
-            "third_house": ["local social flow revealing who feels easy to stay in touch with"],
-            "seventh_house": ["one-to-one accountability in how friendship is practiced"],
-            "eleventh_house": ["community sorting around belonging, trust, and future fit"],
+            "third_house": [
+                "local social flow revealing who feels easy to stay in touch with"
+            ],
+            "seventh_house": [
+                "one-to-one accountability in how friendship is practiced"
+            ],
+            "eleventh_house": [
+                "community sorting around belonging, trust, and future fit"
+            ],
         },
-        "retrograde": ["review pressure around one-sided effort and convenient loyalty"],
-        "default": ["a social quality check where emotional safety matters more than social volume"],
+        "retrograde": [
+            "review pressure around one-sided effort and convenient loyalty"
+        ],
+        "default": [
+            "a social quality check where emotional safety matters more than social volume"
+        ],
     },
     Section.MONEY: {
         "transits": {
-            "financial_focus": ["a money-behavior cycle where impulse and conviction diverge"],
-            "square_tension": ["scarcity pressure that rewards cleaner boundaries, not faster spending"],
-            "retrograde_review": ["financial review energy around leak points and delayed payoff"],
+            "financial_focus": [
+                "a money-behavior cycle where impulse and conviction diverge"
+            ],
+            "square_tension": [
+                "scarcity pressure that rewards cleaner boundaries, not faster spending"
+            ],
+            "retrograde_review": [
+                "financial review energy around leak points and delayed payoff"
+            ],
         },
         "house": {
-            "second_house": ["a value-and-stewardship cycle around what you earn, keep, and trust"],
-            "eighth_house": ["shared-resource pressure around debt, trust, and obligation"],
-            "tenth_house": ["income visibility linked to positioning and delivery standards"],
-            "eleventh_house": ["future-gains questions tied to alliance quality and network fit"],
+            "second_house": [
+                "a value-and-stewardship cycle around what you earn, keep, and trust"
+            ],
+            "eighth_house": [
+                "shared-resource pressure around debt, trust, and obligation"
+            ],
+            "tenth_house": [
+                "income visibility linked to positioning and delivery standards"
+            ],
+            "eleventh_house": [
+                "future-gains questions tied to alliance quality and network fit"
+            ],
         },
         "retrograde": ["review pressure around relief spending and false urgency"],
-        "default": ["a financial psychology cycle where behavior matters more than theory"],
+        "default": [
+            "a financial psychology cycle where behavior matters more than theory"
+        ],
     },
     Section.LOVE_SINGLES: {
         "transits": {
-            "relationship_tension": ["dating pressure around standards and emotional availability"],
-            "retrograde_review": ["a relationship review cycle that filters mixed signals"],
-            "action_activation": ["active attraction energy that needs grounded choices"],
+            "relationship_tension": [
+                "dating pressure around standards and emotional availability"
+            ],
+            "retrograde_review": [
+                "a relationship review cycle that filters mixed signals"
+            ],
+            "action_activation": [
+                "active attraction energy that needs grounded choices"
+            ],
         },
         "house": {
             "fifth_house": ["romantic momentum that favors play with discernment"],
@@ -549,35 +791,53 @@ SECTION_FELT_TONES: Dict[Section, Dict[str, object]] = {
             "ninth_house": ["attraction shaped by shared worldview and long-range fit"],
         },
         "retrograde": ["review pressure around repeating old attraction patterns"],
-        "default": ["a dating cycle focused on fit, reciprocity, and emotional clarity"],
+        "default": [
+            "a dating cycle focused on fit, reciprocity, and emotional clarity"
+        ],
     },
     Section.LOVE_COUPLES: {
         "transits": {
-            "opposition_conflict": ["partnership polarity that needs cleaner negotiation"],
-            "retrograde_review": ["repair pressure around recurring relationship loops"],
+            "opposition_conflict": [
+                "partnership polarity that needs cleaner negotiation"
+            ],
+            "retrograde_review": [
+                "repair pressure around recurring relationship loops"
+            ],
             "emotional_flow": ["heightened emotional responsiveness in shared rhythms"],
         },
         "house": {
             "fourth_house": ["home and emotional-safety dynamics becoming central"],
-            "seventh_house": ["agreement quality and relational accountability in focus"],
+            "seventh_house": [
+                "agreement quality and relational accountability in focus"
+            ],
             "eighth_house": ["deeper trust and vulnerability work asking for honesty"],
         },
         "retrograde": ["review pressure around unresolved partnership patterns"],
-        "default": ["a partnership cycle centered on trust repair and clearer agreements"],
+        "default": [
+            "a partnership cycle centered on trust repair and clearer agreements"
+        ],
     },
     Section.CAREER: {
         "transits": {
-            "action_activation": ["high execution pressure that rewards clear deliverables"],
-            "discipline_restriction": ["structural pressure asking for tighter systems"],
+            "action_activation": [
+                "high execution pressure that rewards clear deliverables"
+            ],
+            "discipline_restriction": [
+                "structural pressure asking for tighter systems"
+            ],
             "square_tension": ["workload friction that demands sharper priorities"],
         },
         "house": {
-            "sixth_house": ["workflow discipline and operational consistency taking priority"],
+            "sixth_house": [
+                "workflow discipline and operational consistency taking priority"
+            ],
             "tenth_house": ["public positioning and leadership pressure intensifying"],
             "eleventh_house": ["network leverage and collaborative strategy in focus"],
         },
         "retrograde": ["review pressure around process debt and unfinished loops"],
-        "default": ["a career cycle focused on output quality and strategic sequencing"],
+        "default": [
+            "a career cycle focused on output quality and strategic sequencing"
+        ],
     },
     Section.HEALTH: {
         "transits": {
@@ -586,7 +846,9 @@ SECTION_FELT_TONES: Dict[Section, Dict[str, object]] = {
             "discipline_restriction": ["habit pressure that rewards consistent basics"],
         },
         "house": {
-            "first_house": ["baseline vitality and embodiment needing direct attention"],
+            "first_house": [
+                "baseline vitality and embodiment needing direct attention"
+            ],
             "sixth_house": ["daily maintenance habits becoming non-negotiable"],
             "twelfth_house": ["deep recovery and rest quality signaling priority"],
         },
@@ -1151,12 +1413,14 @@ class InterpretationEngine:
             action_weighted = [
                 (
                     detail.weight,
-                    detail.factor_insights.get(tip_key) or detail.factor_insights.get("affirmation", ""),
+                    detail.factor_insights.get(tip_key)
+                    or detail.factor_insights.get("affirmation", ""),
                     detail.factor_type,
                     detail.factor_value,
                 )
                 for detail in factor_details
-                if detail.factor_insights.get(tip_key) or detail.factor_insights.get("affirmation")
+                if detail.factor_insights.get(tip_key)
+                or detail.factor_insights.get("affirmation")
             ]
             cautions_raw = self._pick_top_weighted(caution_weighted, limit=6)
             actions_raw = self._pick_top_weighted(action_weighted, limit=6)
@@ -1194,7 +1458,9 @@ class InterpretationEngine:
     ) -> FactorDetail:
         tip_key = self._tip_key_for_period(period)
         meaning = self._lite_meaning_line(spec.factor_type, spec.factor_value, section)
-        reflection = self._lite_reflection_line(spec.factor_type, spec.factor_value, section)
+        reflection = self._lite_reflection_line(
+            spec.factor_type, spec.factor_value, section
+        )
         caution = self._lite_caution_line(spec.factor_type, spec.factor_value, section)
         action = self._lite_action_line(spec.factor_type, spec.factor_value, section)
         affirmation = "Consistency compounds better than urgency in this cycle."
@@ -1220,34 +1486,72 @@ class InterpretationEngine:
             Period.YEARLY: "yearly_tip",
         }[period]
 
-    def _lite_meaning_line(self, factor_type: str, factor_value: str, section: Section) -> str:
+    def _lite_meaning_line(
+        self, factor_type: str, factor_value: str, section: Section
+    ) -> str:
         readable = self._readable_factor_value(factor_value)
         if factor_type == "sun_in_sign":
-            return self._ensure_terminal(f"Sun in {factor_value.title()} sets the baseline tone for this cycle")
+            return self._ensure_terminal(
+                f"Sun in {factor_value.title()} sets the baseline tone for this cycle"
+            )
         if factor_type == "moon_in_sign":
-            return self._ensure_terminal(f"Moon in {factor_value.title()} shapes emotional timing and response")
+            return self._ensure_terminal(
+                f"Moon in {factor_value.title()} shapes emotional timing and response"
+            )
         if factor_type == "rising_sign":
-            return self._ensure_terminal(f"Rising-sign emphasis in {factor_value.title()} affects presentation and pacing")
-        if factor_type in ("daily_house_focus", "weekly_house_focus", "monthly_house_focus", "yearly_house_focus"):
+            return self._ensure_terminal(
+                f"Rising-sign emphasis in {factor_value.title()} affects presentation and pacing"
+            )
+        if factor_type in (
+            "daily_house_focus",
+            "weekly_house_focus",
+            "monthly_house_focus",
+            "yearly_house_focus",
+        ):
             focus = self._house_focus_line(factor_value, section=section)
             return self._ensure_terminal(f"House activation highlights {focus}")
         if factor_type == "planetary_focus" and factor_value.endswith("_focus"):
             planet = factor_value.replace("_focus", "").replace("_", " ").title()
-            return self._ensure_terminal(f"{planet} is foregrounded, so its themes have stronger consequence")
+            return self._ensure_terminal(
+                f"{planet} is foregrounded, so its themes have stronger consequence"
+            )
         if factor_type == "retrograde_archetypes":
-            return self._ensure_terminal(f"{readable.capitalize()} favors review, edits, and better timing")
+            return self._ensure_terminal(
+                f"{readable.capitalize()} favors review, edits, and better timing"
+            )
         if factor_type == "eclipse_archetypes":
-            return self._ensure_terminal(f"{readable.capitalize()} raises consequence, so clear choices matter more")
+            return self._ensure_terminal(
+                f"{readable.capitalize()} raises consequence, so clear choices matter more"
+            )
         if factor_type == "aspects":
-            return self._ensure_terminal(f"Aspect climate is centered on {readable}, shaping pressure and flow")
-        return self._ensure_terminal(f"{factor_type.replace('_', ' ').title()} is currently {readable}")
+            return self._ensure_terminal(
+                f"Aspect climate is centered on {readable}, shaping pressure and flow"
+            )
+        return self._ensure_terminal(
+            f"{factor_type.replace('_', ' ').title()} is currently {readable}"
+        )
 
-    def _lite_reflection_line(self, factor_type: str, factor_value: str, section: Section) -> str:
+    def _lite_reflection_line(
+        self, factor_type: str, factor_value: str, section: Section
+    ) -> str:
         focus = self._section_focus(section)
-        if factor_type in ("monthly_theme_archetypes", "yearly_theme_archetypes", "weekly_theme_archetypes"):
-            return self._ensure_terminal(f"Use this theme to keep {focus} intentional and measurable")
-        if factor_type in ("daily_house_focus", "weekly_house_focus", "monthly_house_focus", "yearly_house_focus"):
-            return self._ensure_terminal(f"Concentrate effort where the house signal is strongest")
+        if factor_type in (
+            "monthly_theme_archetypes",
+            "yearly_theme_archetypes",
+            "weekly_theme_archetypes",
+        ):
+            return self._ensure_terminal(
+                f"Use this theme to keep {focus} intentional and measurable"
+            )
+        if factor_type in (
+            "daily_house_focus",
+            "weekly_house_focus",
+            "monthly_house_focus",
+            "yearly_house_focus",
+        ):
+            return self._ensure_terminal(
+                "Concentrate effort where the house signal is strongest"
+            )
         section_reflections = {
             Section.GENERAL: "Keep decisions aligned with priority, not noise.",
             Section.LOVE_SINGLES: "Let standards and reciprocity guide attraction choices.",
@@ -1259,16 +1563,37 @@ class InterpretationEngine:
             Section.COMMUNICATION: "Keep the message concise, timed, and listener-aware.",
             Section.LIFESTYLE: "Support energy with simpler, repeatable daily systems.",
         }
-        return self._ensure_terminal(section_reflections.get(section, f"Keep {focus} aligned with this pattern"))
+        return self._ensure_terminal(
+            section_reflections.get(section, f"Keep {focus} aligned with this pattern")
+        )
 
-    def _lite_caution_line(self, factor_type: str, factor_value: str, section: Section) -> str:
-        if factor_type == "aspects" and factor_value in ("square", "opposition", "quincunx"):
+    def _lite_caution_line(
+        self, factor_type: str, factor_value: str, section: Section
+    ) -> str:
+        if factor_type == "aspects" and factor_value in (
+            "square",
+            "opposition",
+            "quincunx",
+        ):
             return "Avoid forcing timing while friction is still clarifying priorities."
-        if factor_type == "retrograde_archetypes" and factor_value != "no_major_retrograde":
+        if (
+            factor_type == "retrograde_archetypes"
+            and factor_value != "no_major_retrograde"
+        ):
             return "Avoid locking irreversible decisions before review is complete."
-        if factor_type == "eclipse_archetypes" and factor_value in ("solar_eclipse", "lunar_eclipse", "eclipse_window", "nodal_activation"):
+        if factor_type == "eclipse_archetypes" and factor_value in (
+            "solar_eclipse",
+            "lunar_eclipse",
+            "eclipse_window",
+            "nodal_activation",
+        ):
             return "Avoid all-or-nothing moves under high eclipse pressure."
-        if factor_type in ("daily_house_focus", "weekly_house_focus", "monthly_house_focus", "yearly_house_focus"):
+        if factor_type in (
+            "daily_house_focus",
+            "weekly_house_focus",
+            "monthly_house_focus",
+            "yearly_house_focus",
+        ):
             return "Avoid scattering your effort across too many life areas."
         section_cautions = {
             Section.GENERAL: "Avoid overextending before priorities are clear.",
@@ -1281,20 +1606,36 @@ class InterpretationEngine:
             Section.COMMUNICATION: "Avoid overexplaining when one clear message is enough.",
             Section.LIFESTYLE: "Avoid adding complexity to already overloaded routines.",
         }
-        return section_cautions.get(section, "Avoid overextending before priorities are clear.")
+        return section_cautions.get(
+            section, "Avoid overextending before priorities are clear."
+        )
 
-    def _lite_action_line(self, factor_type: str, factor_value: str, section: Section) -> str:
+    def _lite_action_line(
+        self, factor_type: str, factor_value: str, section: Section
+    ) -> str:
         focus = self._section_focus(section)
         if factor_type == "planetary_focus" and factor_value.endswith("_focus"):
             planet = factor_value.replace("_focus", "").replace("_", " ").title()
             return f"Use {planet} themes to choose one measurable next step in {focus}."
-        if factor_type in ("daily_house_focus", "weekly_house_focus", "monthly_house_focus", "yearly_house_focus"):
+        if factor_type in (
+            "daily_house_focus",
+            "weekly_house_focus",
+            "monthly_house_focus",
+            "yearly_house_focus",
+        ):
             house_focus = self._house_focus_line(factor_value, section=section)
             return f"Focus your next move on {house_focus}."
-        if factor_type in ("monthly_theme_archetypes", "yearly_theme_archetypes", "weekly_theme_archetypes"):
+        if factor_type in (
+            "monthly_theme_archetypes",
+            "yearly_theme_archetypes",
+            "weekly_theme_archetypes",
+        ):
             readable = self._readable_factor_value(factor_value)
             return f"Set one concrete goal that matches the {readable} theme."
-        if factor_type == "retrograde_archetypes" and factor_value != "no_major_retrograde":
+        if (
+            factor_type == "retrograde_archetypes"
+            and factor_value != "no_major_retrograde"
+        ):
             return "Review existing commitments before launching something new."
         section_actions = {
             Section.GENERAL: f"Take one practical step that supports {focus}.",
@@ -1307,7 +1648,9 @@ class InterpretationEngine:
             Section.COMMUNICATION: "Draft the core message in one clear sentence first.",
             Section.LIFESTYLE: "Remove one low-value routine and reinforce one useful one.",
         }
-        return section_actions.get(section, f"Take one practical step that supports {focus}.")
+        return section_actions.get(
+            section, f"Take one practical step that supports {focus}."
+        )
 
     def _weights_for_section(self, section: Section) -> Dict[str, float]:
         weights = self.rules.section_weights.get(section.value)
@@ -1343,7 +1686,9 @@ class InterpretationEngine:
             base["clarity"] += weight * (4 if position.speed >= 0 else -3)
             base["opportunity"] += weight * 5
             base["focus"] += weight * (4 if position.name in ("Saturn", "Vesta") else 2)
-            base["connection"] += weight * (3 if position.name in ("Venus", "Moon", "Juno") else 1)
+            base["connection"] += weight * (
+                3 if position.name in ("Venus", "Moon", "Juno") else 1
+            )
 
         for aspect in snapshot.aspects:
             if aspect.aspect in ("square", "opposition"):
@@ -1358,8 +1703,12 @@ class InterpretationEngine:
                 base["momentum"] += 2.0
 
         if metrics:
-            hard = metrics.aspect_counts.get("square", 0) + metrics.aspect_counts.get("opposition", 0)
-            soft = metrics.aspect_counts.get("trine", 0) + metrics.aspect_counts.get("sextile", 0)
+            hard = metrics.aspect_counts.get("square", 0) + metrics.aspect_counts.get(
+                "opposition", 0
+            )
+            soft = metrics.aspect_counts.get("trine", 0) + metrics.aspect_counts.get(
+                "sextile", 0
+            )
             base["stability"] -= min(8.0, hard * 0.3)
             base["opportunity"] += min(8.0, soft * 0.3)
             if "Mercury" in metrics.retrograde_bodies:
@@ -1371,8 +1720,12 @@ class InterpretationEngine:
             metrics=metrics,
             period_events=period_events,
         )
-        relevant_houses = SECTION_HOUSE_BIAS.get(section, SECTION_HOUSE_BIAS[Section.GENERAL])
-        relevant_pressure = sum(house_scores.get(house, 0.0) for house in relevant_houses)
+        relevant_houses = SECTION_HOUSE_BIAS.get(
+            section, SECTION_HOUSE_BIAS[Section.GENERAL]
+        )
+        relevant_pressure = sum(
+            house_scores.get(house, 0.0) for house in relevant_houses
+        )
         total_pressure = sum(house_scores.values()) or 1.0
         focus_share = min(1.0, (relevant_pressure / total_pressure) * 1.4)
 
@@ -1388,7 +1741,9 @@ class InterpretationEngine:
             base["focus"] -= 2.5
 
         for event in period_events:
-            bias = event.section_bias.get(section.value, 0.0) + (event.section_bias.get("general", 0.0) * 0.35)
+            bias = event.section_bias.get(section.value, 0.0) + (
+                event.section_bias.get("general", 0.0) * 0.35
+            )
             if bias <= 0:
                 continue
             exact_bonus = 1.0
@@ -1433,7 +1788,9 @@ class InterpretationEngine:
             return "steady"
         return "quiet"
 
-    def _title(self, section: Section, sign: str, period: Period, intensity: str) -> str:
+    def _title(
+        self, section: Section, sign: str, period: Period, intensity: str
+    ) -> str:
         tone = self.rules.sign_tone.get(sign, "balanced")
         label = section.value.replace("_", " ").title()
         return f"{label} {period.value} outlook: {tone} ({intensity})"
@@ -1452,7 +1809,9 @@ class InterpretationEngine:
         factor_type_allowlist: Optional[Sequence[str]] = None,
         focus_body: Optional[str] = None,
     ) -> Optional[Tuple[str, List[str], List[str], List[str], List[FactorDetail]]]:
-        if not self.content_repository or not self.content_repository.has_period_data(period):
+        if not self.content_repository or not self.content_repository.has_period_data(
+            period
+        ):
             return None
 
         section_candidates = self._section_candidates(section)
@@ -1508,7 +1867,9 @@ class InterpretationEngine:
             for key, line in sampled.items():
                 bucket = "tip" if key in TIP_KEYS else key
                 if bucket in weighted:
-                    weighted[bucket].append((spec.weight, line, spec.factor_type, spec.factor_value))
+                    weighted[bucket].append(
+                        (spec.weight, line, spec.factor_type, spec.factor_value)
+                    )
 
             factor_details.append(
                 FactorDetail(
@@ -1576,7 +1937,9 @@ class InterpretationEngine:
 
         return summary_text, highlights[:4], cautions[:4], actions[:4], factor_details
 
-    def _sample_factor_blocks(self, blocks: Dict[str, List[str]], tip_key: str, seed: str) -> Dict[str, str]:
+    def _sample_factor_blocks(
+        self, blocks: Dict[str, List[str]], tip_key: str, seed: str
+    ) -> Dict[str, str]:
         sampled: Dict[str, str] = {}
         ordered_keys = ["motivation", "caution", "reflection", tip_key, "affirmation"]
 
@@ -1595,7 +1958,9 @@ class InterpretationEngine:
             sampled[key] = lines[idx]
         return sampled
 
-    def _pick_top_weighted(self, values: Sequence[Tuple[float, str, str, str]], limit: int) -> List[str]:
+    def _pick_top_weighted(
+        self, values: Sequence[Tuple[float, str, str, str]], limit: int
+    ) -> List[str]:
         ranked = sorted(
             values,
             key=lambda row: (
@@ -1663,7 +2028,9 @@ class InterpretationEngine:
             return self._editorialize_action_text(text, section, narrative_seed, index)
         return self._ensure_terminal(text)
 
-    def _editorialize_caution_text(self, text: str, section: Section, narrative_seed: str, index: int) -> str:
+    def _editorialize_caution_text(
+        self, text: str, section: Section, narrative_seed: str, index: int
+    ) -> str:
         lower = text.lower()
         if lower.startswith("avoid "):
             core = text[6:].strip().rstrip(".")
@@ -1672,7 +2039,9 @@ class InterpretationEngine:
                 f"{narrative_seed}|caution_avoid|{index}",
             )
             sentence = self._ensure_terminal(f"{prefix} {core}")
-            return self._with_section_caution_prefix(sentence, section, narrative_seed, index)
+            return self._with_section_caution_prefix(
+                sentence, section, narrative_seed, index
+            )
         if lower.startswith("watch for "):
             core = text[10:].strip().rstrip(".")
             prefix = self._pick_phrase(
@@ -1680,16 +2049,27 @@ class InterpretationEngine:
                 f"{narrative_seed}|caution_watch|{index}",
             )
             sentence = self._ensure_terminal(f"{prefix} {core}")
-            return self._with_section_caution_prefix(sentence, section, narrative_seed, index)
+            return self._with_section_caution_prefix(
+                sentence, section, narrative_seed, index
+            )
         if lower.startswith("resist "):
-            prefix = self._pick_phrase(["Resist", "Hold back from", "Keep in check"], f"{narrative_seed}|caution_resist|{index}")
+            prefix = self._pick_phrase(
+                ["Resist", "Hold back from", "Keep in check"],
+                f"{narrative_seed}|caution_resist|{index}",
+            )
             rest = text.split(" ", 1)[1] if " " in text else text
             sentence = self._ensure_terminal(f"{prefix} {rest}")
-            return self._with_section_caution_prefix(sentence, section, narrative_seed, index)
+            return self._with_section_caution_prefix(
+                sentence, section, narrative_seed, index
+            )
         sentence = self._ensure_terminal(text)
-        return self._with_section_caution_prefix(sentence, section, narrative_seed, index)
+        return self._with_section_caution_prefix(
+            sentence, section, narrative_seed, index
+        )
 
-    def _with_section_caution_prefix(self, text: str, section: Section, narrative_seed: str, index: int) -> str:
+    def _with_section_caution_prefix(
+        self, text: str, section: Section, narrative_seed: str, index: int
+    ) -> str:
         body = self._clean_line(text)
         if not body:
             return ""
@@ -1702,7 +2082,9 @@ class InterpretationEngine:
         body = re.sub(r"^caution:\s*", "", body, flags=re.IGNORECASE)
         return self._ensure_terminal(body)
 
-    def _editorialize_action_text(self, text: str, section: Section, narrative_seed: str, index: int) -> str:
+    def _editorialize_action_text(
+        self, text: str, section: Section, narrative_seed: str, index: int
+    ) -> str:
         converted = self._affirmation_to_action(text)
         converted = re.sub(r"\bI trust\b", "Trust", converted, flags=re.IGNORECASE)
         converted = re.sub(r"\bI honor\b", "Honor", converted, flags=re.IGNORECASE)
@@ -1723,25 +2105,41 @@ class InterpretationEngine:
         converted = converted[:1].upper() + converted[1:] if converted else converted
         return self._ensure_terminal(converted)
 
-    def _rephrase_action_opening(self, text: str, narrative_seed: str, index: int) -> str:
+    def _rephrase_action_opening(
+        self, text: str, narrative_seed: str, index: int
+    ) -> str:
         value = self._clean_line(text)
         if not value:
             return ""
         lower = value.lower()
         if lower.startswith("start "):
-            repl = self._pick_phrase(["Start", "Begin", "Open"], f"{narrative_seed}|action_verb|start|{index}")
+            repl = self._pick_phrase(
+                ["Start", "Begin", "Open"],
+                f"{narrative_seed}|action_verb|start|{index}",
+            )
             return repl + value[5:]
         if lower.startswith("end "):
-            repl = self._pick_phrase(["End", "Close", "Wrap"], f"{narrative_seed}|action_verb|end|{index}")
+            repl = self._pick_phrase(
+                ["End", "Close", "Wrap"], f"{narrative_seed}|action_verb|end|{index}"
+            )
             return repl + value[3:]
         if lower.startswith("schedule "):
-            repl = self._pick_phrase(["Schedule", "Block", "Set"], f"{narrative_seed}|action_verb|schedule|{index}")
+            repl = self._pick_phrase(
+                ["Schedule", "Block", "Set"],
+                f"{narrative_seed}|action_verb|schedule|{index}",
+            )
             return repl + value[8:]
         if lower.startswith("invest in "):
-            repl = self._pick_phrase(["Invest in", "Allocate toward", "Commit to"], f"{narrative_seed}|action_verb|invest|{index}")
+            repl = self._pick_phrase(
+                ["Invest in", "Allocate toward", "Commit to"],
+                f"{narrative_seed}|action_verb|invest|{index}",
+            )
             return repl + value[9:]
         if lower.startswith("use the "):
-            repl = self._pick_phrase(["Use the", "Apply the", "Work with the"], f"{narrative_seed}|action_verb|use|{index}")
+            repl = self._pick_phrase(
+                ["Use the", "Apply the", "Work with the"],
+                f"{narrative_seed}|action_verb|use|{index}",
+            )
             return repl + value[7:]
         return value
 
@@ -1749,7 +2147,12 @@ class InterpretationEngine:
         value = self._clean_line(text)
         if not value:
             return ""
-        value = re.sub(r"^(today|this week|this month|this year|right now),?\s+", "", value, flags=re.IGNORECASE)
+        value = re.sub(
+            r"^(today|this week|this month|this year|right now),?\s+",
+            "",
+            value,
+            flags=re.IGNORECASE,
+        )
         lower = value.lower()
         replacements = [
             (r"^i am\b", "Be"),
@@ -1785,7 +2188,9 @@ class InterpretationEngine:
         intensity: str,
     ) -> Tuple[str, List[str], List[str], List[str]]:
         key_planets = self._weights_for_section(section)
-        top_planets = sorted(key_planets.items(), key=lambda item: item[1], reverse=True)[:2]
+        top_planets = sorted(
+            key_planets.items(), key=lambda item: item[1], reverse=True
+        )[:2]
         keywords: List[str] = []
         for planet, _ in top_planets:
             keywords.extend(self.rules.planet_keywords.get(planet, []))
@@ -1798,7 +2203,9 @@ class InterpretationEngine:
 
         highlights = [
             f"Moon themes in {snapshot.moon_sign} shape this {period.value} cycle.",
-            f"Keep attention on {keywords[0]}." if keywords else "Keep attention on practical priorities.",
+            f"Keep attention on {keywords[0]}."
+            if keywords
+            else "Keep attention on practical priorities.",
         ]
         if notable_events:
             highlights.append(notable_events[0])
@@ -1827,7 +2234,9 @@ class InterpretationEngine:
         factor_type_allowlist: Optional[Sequence[str]] = None,
         focus_body: Optional[str] = None,
     ) -> List[FactorSpec]:
-        dominant_aspect = self._dominant_aspect(metrics, snapshot, focus_body=focus_body)
+        dominant_aspect = self._dominant_aspect(
+            metrics, snapshot, focus_body=focus_body
+        )
         transit_archetype = self._transit_archetype(
             metrics,
             snapshot,
@@ -1850,14 +2259,23 @@ class InterpretationEngine:
             "aspects": dominant_aspect,
             "daily_house_focus": house_focus,
             "weekly_moon_phase": self._weekly_moon_phase(snapshot),
-            "planetary_focus": self._planetary_focus(period, snapshot, metrics, focus_body=focus_body),
-            "retrograde_archetypes": self._retrograde_archetype(period, metrics, snapshot),
+            "planetary_focus": self._planetary_focus(
+                period, snapshot, metrics, focus_body=focus_body
+            ),
+            "retrograde_archetypes": self._retrograde_archetype(
+                period, metrics, snapshot
+            ),
             "ingress_archetypes": self._ingress_archetype(period, metrics),
-            "weekly_theme_archetypes": self._pick_theme(WEEKLY_THEMES, f"{sign}|{section.value}|weekly"),
+            "weekly_theme_archetypes": self._pick_theme(
+                WEEKLY_THEMES, f"{sign}|{section.value}|weekly"
+            ),
             "monthly_lunation_archetypes": self._monthly_lunation(snapshot),
             "eclipse_archetypes": self._eclipse_archetype(period, snapshot),
             "outer_planet_focus": self._outer_planet_focus(snapshot, metrics),
-            "monthly_theme_archetypes": self._pick_theme(MONTHLY_THEMES, f"{sign}|{section.value}|monthly|{snapshot.timestamp.month}"),
+            "monthly_theme_archetypes": self._pick_theme(
+                MONTHLY_THEMES,
+                f"{sign}|{section.value}|monthly|{snapshot.timestamp.month}",
+            ),
             "jupiter_in_sign": self._position_sign(snapshot, "Jupiter", sign),
             "saturn_in_sign": self._position_sign(snapshot, "Saturn", sign),
             "chiron_in_sign": self._position_sign(snapshot, "Chiron", sign),
@@ -1883,7 +2301,11 @@ class InterpretationEngine:
         weights = PERIOD_FACTOR_WEIGHTS[period]
         allow = None
         if factor_type_allowlist:
-            allow = {value.strip() for value in factor_type_allowlist if value and value.strip()}
+            allow = {
+                value.strip()
+                for value in factor_type_allowlist
+                if value and value.strip()
+            }
         return [
             FactorSpec(
                 factor_type=factor_type,
@@ -1900,7 +2322,14 @@ class InterpretationEngine:
         snapshot: ChartSnapshot,
         focus_body: Optional[str] = None,
     ) -> str:
-        tracked = ["conjunction", "trine", "sextile", "square", "opposition", "quincunx"]
+        tracked = [
+            "conjunction",
+            "trine",
+            "sextile",
+            "square",
+            "opposition",
+            "quincunx",
+        ]
         counts = {name: 0 for name in tracked}
 
         if focus_body:
@@ -1931,7 +2360,11 @@ class InterpretationEngine:
         dominant_aspect: str,
         focus_body: Optional[str] = None,
     ) -> str:
-        retrogrades = set(metrics.retrograde_bodies) if metrics else {p.name for p in snapshot.positions if p.retrograde}
+        retrogrades = (
+            set(metrics.retrograde_bodies)
+            if metrics
+            else {p.name for p in snapshot.positions if p.retrograde}
+        )
         if focus_body and focus_body in retrogrades:
             return "retrograde_review"
         if retrogrades and not focus_body:
@@ -2013,7 +2446,15 @@ class InterpretationEngine:
     ) -> str:
         activity = self._planet_activity(snapshot, metrics)
         if period == Period.WEEKLY:
-            candidates = ["Sun", "Moon", "Mercury", "Venus", "Mars", "Jupiter", "Saturn"]
+            candidates = [
+                "Sun",
+                "Moon",
+                "Mercury",
+                "Venus",
+                "Mars",
+                "Jupiter",
+                "Saturn",
+            ]
             if focus_body in candidates:
                 return f"{focus_body.lower()}_focus"
             chosen = self._top_activity(activity, candidates, default="Sun")
@@ -2038,12 +2479,24 @@ class InterpretationEngine:
             return f"{chosen.lower()}_focus"
 
         if period == Period.YEARLY:
-            yearly_candidates = ["Jupiter", "Saturn", "Uranus", "Neptune", "Pluto", "Chiron"]
+            yearly_candidates = [
+                "Jupiter",
+                "Saturn",
+                "Uranus",
+                "Neptune",
+                "Pluto",
+                "Chiron",
+            ]
             if focus_body in yearly_candidates:
                 return f"{focus_body.lower()}_focus"
 
             eclipse = self._eclipse_archetype(period, snapshot)
-            if eclipse in ("solar_eclipse", "lunar_eclipse", "eclipse_window", "nodal_activation"):
+            if eclipse in (
+                "solar_eclipse",
+                "lunar_eclipse",
+                "eclipse_window",
+                "nodal_activation",
+            ):
                 return "eclipse_focus"
             node_score = activity.get("North Node", 0) + activity.get("South Node", 0)
             if node_score >= 3:
@@ -2054,7 +2507,9 @@ class InterpretationEngine:
 
         return "sun_focus"
 
-    def _retrograde_archetype(self, period: Period, metrics: PeriodMetrics | None, snapshot: ChartSnapshot) -> str:
+    def _retrograde_archetype(
+        self, period: Period, metrics: PeriodMetrics | None, snapshot: ChartSnapshot
+    ) -> str:
         retrogrades = [p.name for p in snapshot.positions if p.retrograde]
         if metrics and metrics.retrograde_bodies:
             retrogrades = metrics.retrograde_bodies
@@ -2066,7 +2521,11 @@ class InterpretationEngine:
             return "no_major_retrograde"
 
         if period == Period.MONTHLY:
-            matched = [value for planet, value in RETROGRADE_MONTHLY.items() if planet in retrogrades]
+            matched = [
+                value
+                for planet, value in RETROGRADE_MONTHLY.items()
+                if planet in retrogrades
+            ]
             if len(matched) >= 2:
                 return "mixed_retrogrades"
             if matched:
@@ -2074,7 +2533,11 @@ class InterpretationEngine:
             return "no_major_retrograde"
 
         if period == Period.YEARLY:
-            matched = [value for planet, value in RETROGRADE_YEARLY.items() if planet in retrogrades]
+            matched = [
+                value
+                for planet, value in RETROGRADE_YEARLY.items()
+                if planet in retrogrades
+            ]
             if len(matched) >= 2:
                 return "mixed_retrogrades"
             if matched:
@@ -2085,7 +2548,9 @@ class InterpretationEngine:
 
     def _ingress_archetype(self, period: Period, metrics: PeriodMetrics | None) -> str:
         sign_changes = metrics.sign_changes if metrics else []
-        changed_bodies = {line.split(" enters ")[0] for line in sign_changes if " enters " in line}
+        changed_bodies = {
+            line.split(" enters ")[0] for line in sign_changes if " enters " in line
+        }
 
         if period == Period.WEEKLY:
             if "Sun" in changed_bodies:
@@ -2151,7 +2616,9 @@ class InterpretationEngine:
 
         return "no_eclipse"
 
-    def _outer_planet_focus(self, snapshot: ChartSnapshot, metrics: PeriodMetrics | None) -> str:
+    def _outer_planet_focus(
+        self, snapshot: ChartSnapshot, metrics: PeriodMetrics | None
+    ) -> str:
         activity = self._planet_activity(snapshot, metrics)
         mapping = {
             "Uranus": "uranus_shift",
@@ -2170,10 +2637,19 @@ class InterpretationEngine:
         mapped = NODAL_AXIS_BY_SIGNS.get(frozenset((north, south)))
         if mapped:
             return mapped
-        options = ["aries_libra", "taurus_scorpio", "gemini_sagittarius", "cancer_capricorn", "leo_aquarius", "virgo_pisces"]
+        options = [
+            "aries_libra",
+            "taurus_scorpio",
+            "gemini_sagittarius",
+            "cancer_capricorn",
+            "leo_aquarius",
+            "virgo_pisces",
+        ]
         return options[stable_index(f"{north}|{south}", len(options))]
 
-    def _planet_activity(self, snapshot: ChartSnapshot, metrics: PeriodMetrics | None) -> Dict[str, float]:
+    def _planet_activity(
+        self, snapshot: ChartSnapshot, metrics: PeriodMetrics | None
+    ) -> Dict[str, float]:
         activity: Dict[str, float] = {}
         for aspect in snapshot.aspects:
             activity[aspect.body1] = activity.get(aspect.body1, 0.0) + 1.0
@@ -2189,7 +2665,9 @@ class InterpretationEngine:
 
         return activity
 
-    def _top_activity(self, activity: Dict[str, float], candidates: Sequence[str], default: str) -> str:
+    def _top_activity(
+        self, activity: Dict[str, float], candidates: Sequence[str], default: str
+    ) -> str:
         best_name = default
         best_score = activity.get(default, -1.0)
         for name in candidates:
@@ -2222,17 +2700,25 @@ class InterpretationEngine:
             south = 180.0
 
         sun_moon_sep = self._angle_distance(sun, moon)
-        sun_node_dist = min(self._angle_distance(sun, north), self._angle_distance(sun, south))
-        moon_node_dist = min(self._angle_distance(moon, north), self._angle_distance(moon, south))
+        sun_node_dist = min(
+            self._angle_distance(sun, north), self._angle_distance(sun, south)
+        )
+        moon_node_dist = min(
+            self._angle_distance(moon, north), self._angle_distance(moon, south)
+        )
         return sun_moon_sep, sun_node_dist, moon_node_dist
 
-    def _position_sign(self, snapshot: ChartSnapshot, body_name: str, default: str) -> str:
+    def _position_sign(
+        self, snapshot: ChartSnapshot, body_name: str, default: str
+    ) -> str:
         for position in snapshot.positions:
             if position.name == body_name:
                 return position.sign
         return default
 
-    def _position_longitude(self, snapshot: ChartSnapshot, body_name: str) -> Optional[float]:
+    def _position_longitude(
+        self, snapshot: ChartSnapshot, body_name: str
+    ) -> Optional[float]:
         for position in snapshot.positions:
             if position.name == body_name:
                 return position.longitude
@@ -2278,11 +2764,15 @@ class InterpretationEngine:
     ) -> Dict[int, float]:
         scores: Dict[int, float] = {house: 0.0 for house in range(1, 13)}
         rising_sign = snapshot.rising_sign
-        has_direct_houses = any((position.house is not None) for position in snapshot.positions)
+        has_direct_houses = any(
+            (position.house is not None) for position in snapshot.positions
+        )
         if not rising_sign and not has_direct_houses:
             return scores
 
-        body_weights = BODY_HOUSE_WEIGHTS_BY_PERIOD.get(period, BODY_HOUSE_WEIGHTS_BY_PERIOD[Period.MONTHLY])
+        body_weights = BODY_HOUSE_WEIGHTS_BY_PERIOD.get(
+            period, BODY_HOUSE_WEIGHTS_BY_PERIOD[Period.MONTHLY]
+        )
 
         for position in snapshot.positions:
             house = position.house
@@ -2372,7 +2862,9 @@ class InterpretationEngine:
             return int(house)
         return None
 
-    def _house_for_sign(self, snapshot: ChartSnapshot, sign: str, rising_sign: Optional[str]) -> Optional[int]:
+    def _house_for_sign(
+        self, snapshot: ChartSnapshot, sign: str, rising_sign: Optional[str]
+    ) -> Optional[int]:
         if sign not in ZODIAC_SIGNS:
             return None
         if snapshot.house_cusps:
@@ -2385,7 +2877,9 @@ class InterpretationEngine:
             return self._whole_sign_house(rising_sign, sign)
         return None
 
-    def _house_from_cusps(self, longitude: float, cusps: Sequence[float]) -> Optional[int]:
+    def _house_from_cusps(
+        self, longitude: float, cusps: Sequence[float]
+    ) -> Optional[int]:
         if len(cusps) != 12:
             return None
         lon = longitude % 360.0
@@ -2536,21 +3030,33 @@ class InterpretationEngine:
                 focus_body=focus_body,
             )
 
-        intro = self._period_intro(period, sign, section, intensity, timestamp, narrative_seed)
-        focus_line = self._planet_focus_line(period, section, focus_body, narrative_seed)
-        event_line = self._period_event_line(period, period_events or [], notable_events, narrative_seed)
+        intro = self._period_intro(
+            period, sign, section, intensity, timestamp, narrative_seed
+        )
+        focus_line = self._planet_focus_line(
+            period, section, focus_body, narrative_seed
+        )
+        event_line = self._period_event_line(
+            period, period_events or [], notable_events, narrative_seed
+        )
         rank_limit = {
             Period.DAILY: 2,
             Period.WEEKLY: 3,
             Period.MONTHLY: 4,
             Period.YEARLY: 4,
         }.get(period, 3)
-        top_factors = sorted(factor_details, key=lambda item: item.weight, reverse=True)[:rank_limit]
+        top_factors = sorted(
+            factor_details, key=lambda item: item.weight, reverse=True
+        )[:rank_limit]
 
         influence_lines: List[str] = []
         for index, detail in enumerate(top_factors):
-            influence = self._factor_influence(period, section, detail.factor_type, detail.factor_value)
-            influence = self._apply_section_lens(influence, section, detail.factor_type, index)
+            influence = self._factor_influence(
+                period, section, detail.factor_type, detail.factor_value
+            )
+            influence = self._apply_section_lens(
+                influence, section, detail.factor_type, index
+            )
             support = self._editorialize_support(
                 self._supporting_line(detail, period, index),
                 section,
@@ -2558,7 +3064,11 @@ class InterpretationEngine:
                 index,
             )
             if support and index < 2:
-                influence_lines.append(self._connect_influence_line(influence, support, index, narrative_seed))
+                influence_lines.append(
+                    self._connect_influence_line(
+                        influence, support, index, narrative_seed
+                    )
+                )
             else:
                 influence_lines.append(influence)
 
@@ -2589,21 +3099,35 @@ class InterpretationEngine:
         cadence_state: Optional[Dict[str, str]] = None,
         focus_body: Optional[str] = None,
     ) -> str:
-        intro = self._period_intro(period, sign, section, intensity, timestamp, narrative_seed)
-        focus_line = self._planet_focus_line(period, section, focus_body, narrative_seed)
-        thesis_line = self._editorial_thesis_line(period, section, factor_details, narrative_seed)
+        intro = self._period_intro(
+            period, sign, section, intensity, timestamp, narrative_seed
+        )
+        focus_line = self._planet_focus_line(
+            period, section, focus_body, narrative_seed
+        )
+        thesis_line = self._editorial_thesis_line(
+            period, section, factor_details, narrative_seed
+        )
         breath_line = self._editorial_breath_line(period, narrative_seed, cadence_state)
-        events = self._timeline_events(period, period_events or [], notable_events, limit=3)
+        events = self._timeline_events(
+            period, period_events or [], notable_events, limit=3
+        )
         event_arc = self._editorial_event_arc(period, section, events, narrative_seed)
-        theme_line = self._editorial_theme_line(period, section, factor_details, narrative_seed)
-        influence_lines = self._editorial_influence_lines(period, section, factor_details, narrative_seed)
+        theme_line = self._editorial_theme_line(
+            period, section, factor_details, narrative_seed
+        )
+        influence_lines = self._editorial_influence_lines(
+            period, section, factor_details, narrative_seed
+        )
         contrast_line = self._editorial_contrast_line(section, narrative_seed)
         close = self._period_close(period, section, factor_details, narrative_seed)
         voice = self._section_voice(section)
         dynamic_close = (
             self._dynamic_close_line(voice["monthly_close"], "monthly", narrative_seed)
             if period == Period.MONTHLY
-            else self._dynamic_close_line(voice["yearly_close"], "yearly", narrative_seed)
+            else self._dynamic_close_line(
+                voice["yearly_close"], "yearly", narrative_seed
+            )
         )
 
         slots: Dict[str, List[str]] = {
@@ -2656,7 +3180,9 @@ class InterpretationEngine:
             return ""
         if to_token not in LONGFORM_BRIDGE_TOKENS:
             return ""
-        bank = LONGFORM_BRIDGE_BANKS.get(section, LONGFORM_BRIDGE_BANKS[Section.GENERAL])
+        bank = LONGFORM_BRIDGE_BANKS.get(
+            section, LONGFORM_BRIDGE_BANKS[Section.GENERAL]
+        )
         if not bank:
             return ""
         # Keep connectors sparse so cadence improves without bloating paragraphs.
@@ -2712,7 +3238,9 @@ class InterpretationEngine:
             "{period_span_cap}, keep {planet} as your guiding lens; {area} responds quickly to intent.",
             "{planet} is foregrounded {period_span}, bringing sharper focus to {area}.",
         ]
-        template = self._pick_phrase(templates, f"{narrative_seed}|planet_focus|{section.value}|{period.value}")
+        template = self._pick_phrase(
+            templates, f"{narrative_seed}|planet_focus|{section.value}|{period.value}"
+        )
         return template.format(
             planet=planet,
             period_span=readable_period,
@@ -2742,7 +3270,10 @@ class InterpretationEngine:
         if transit:
             transit_map = bank.get("transits", {})
             if isinstance(transit_map, dict):
-                scoped = _pick(transit_map.get(transit.factor_value), f"transit|{transit.factor_value}")
+                scoped = _pick(
+                    transit_map.get(transit.factor_value),
+                    f"transit|{transit.factor_value}",
+                )
                 if scoped:
                     return scoped
 
@@ -2750,7 +3281,9 @@ class InterpretationEngine:
         if aspect:
             aspect_map = bank.get("aspects", {})
             if isinstance(aspect_map, dict):
-                scoped = _pick(aspect_map.get(aspect.factor_value), f"aspect|{aspect.factor_value}")
+                scoped = _pick(
+                    aspect_map.get(aspect.factor_value), f"aspect|{aspect.factor_value}"
+                )
                 if scoped:
                     return scoped
 
@@ -2758,7 +3291,9 @@ class InterpretationEngine:
         if retro and retro.factor_value != "no_major_retrograde":
             retro_map = bank.get("retrograde_map", {})
             if isinstance(retro_map, dict):
-                scoped = _pick(retro_map.get(retro.factor_value), f"retro_map|{retro.factor_value}")
+                scoped = _pick(
+                    retro_map.get(retro.factor_value), f"retro_map|{retro.factor_value}"
+                )
                 if scoped:
                     return scoped
             scoped = _pick(bank.get("retrograde"), "retrograde|default")
@@ -2769,14 +3304,22 @@ class InterpretationEngine:
             (
                 detail
                 for detail in factor_details
-                if detail.factor_type in ("daily_house_focus", "weekly_house_focus", "monthly_house_focus", "yearly_house_focus")
+                if detail.factor_type
+                in (
+                    "daily_house_focus",
+                    "weekly_house_focus",
+                    "monthly_house_focus",
+                    "yearly_house_focus",
+                )
             ),
             None,
         )
         if house:
             house_map = bank.get("house", {})
             if isinstance(house_map, dict):
-                scoped = _pick(house_map.get(house.factor_value), f"house|{house.factor_value}")
+                scoped = _pick(
+                    house_map.get(house.factor_value), f"house|{house.factor_value}"
+                )
                 if scoped:
                     return scoped
             return f"strong life-area pressure around {self._readable_factor_value(house.factor_value)}"
@@ -2794,7 +3337,9 @@ class InterpretationEngine:
     ) -> str:
         period_key = "monthly" if period == Period.MONTHLY else "yearly"
         templates = THESIS_TEMPLATES[period_key]
-        from_state, to_state = SECTION_CONTRAST_STATES.get(section, SECTION_CONTRAST_STATES[Section.GENERAL])
+        from_state, to_state = SECTION_CONTRAST_STATES.get(
+            section, SECTION_CONTRAST_STATES[Section.GENERAL]
+        )
         felt_tone = self._editorial_felt_tone(section, factor_details, narrative_seed)
         template = self._pick_phrase(templates, f"{narrative_seed}|thesis|{period_key}")
         return template.format(
@@ -2804,9 +3349,13 @@ class InterpretationEngine:
         )
 
     def _editorial_contrast_line(self, section: Section, narrative_seed: str) -> str:
-        from_state, to_state = SECTION_CONTRAST_STATES.get(section, SECTION_CONTRAST_STATES[Section.GENERAL])
+        from_state, to_state = SECTION_CONTRAST_STATES.get(
+            section, SECTION_CONTRAST_STATES[Section.GENERAL]
+        )
         templates = SECTION_CONTRAST_TEMPLATES.get(section, CONTRAST_TEMPLATES)
-        template = self._pick_phrase(templates, f"{narrative_seed}|contrast|{section.value}")
+        template = self._pick_phrase(
+            templates, f"{narrative_seed}|contrast|{section.value}"
+        )
         return template.format(from_state=from_state, to_state=to_state)
 
     def _editorial_theme_line(
@@ -2827,10 +3376,18 @@ class InterpretationEngine:
         readable = self._readable_factor_value(detail.factor_value)
         voice = self._section_voice(section)
         if period == Period.MONTHLY:
-            template = self._pick_phrase(THEME_PATTERNS["monthly"], f"{narrative_seed}|theme|monthly")
+            template = self._pick_phrase(
+                THEME_PATTERNS["monthly"], f"{narrative_seed}|theme|monthly"
+            )
             theme_article = self._indefinite_article(readable)
-            return template.format(theme=readable, focus=voice["monthly_theme_focus"], theme_article=theme_article)
-        template = self._pick_phrase(THEME_PATTERNS["yearly"], f"{narrative_seed}|theme|yearly")
+            return template.format(
+                theme=readable,
+                focus=voice["monthly_theme_focus"],
+                theme_article=theme_article,
+            )
+        template = self._pick_phrase(
+            THEME_PATTERNS["yearly"], f"{narrative_seed}|theme|yearly"
+        )
         return template.format(theme=readable, focus=voice["yearly_theme_focus"])
 
     def _editorial_event_arc(
@@ -2843,11 +3400,17 @@ class InterpretationEngine:
         if not events:
             return ""
         key = period.value
-        anchor_sets = EVENT_ANCHOR_OPTIONS.get(key, [EVENT_ANCHOR_OPTIONS["monthly"][0]])
+        anchor_sets = EVENT_ANCHOR_OPTIONS.get(
+            key, [EVENT_ANCHOR_OPTIONS["monthly"][0]]
+        )
         anchors = self._pick_phrase(anchor_sets, f"{narrative_seed}|anchors|{key}")
         lines = [f"{anchor}, {event}." for anchor, event in zip(anchors, events)]
         voice = self._section_voice(section)
-        impact = voice["monthly_event_impact"] if period == Period.MONTHLY else voice["yearly_event_impact"]
+        impact = (
+            voice["monthly_event_impact"]
+            if period == Period.MONTHLY
+            else voice["yearly_event_impact"]
+        )
         impact_line = self._pick_phrase(
             EVENT_IMPACT_LINES,
             f"{narrative_seed}|impact_line|{key}",
@@ -2863,7 +3426,11 @@ class InterpretationEngine:
     ) -> List[str]:
         skip_types = {"monthly_theme_archetypes", "yearly_theme_archetypes"}
         ordered = sorted(
-            [detail for detail in factor_details if detail.factor_type not in skip_types],
+            [
+                detail
+                for detail in factor_details
+                if detail.factor_type not in skip_types
+            ],
             key=lambda item: (
                 self._factor_priority(period, item.factor_type),
                 -item.weight,
@@ -2872,8 +3439,12 @@ class InterpretationEngine:
         selected = ordered[:3]
         lines: List[str] = []
         for idx, detail in enumerate(selected):
-            influence = self._factor_influence(period, section, detail.factor_type, detail.factor_value)
-            influence = self._apply_section_lens(influence, section, detail.factor_type, idx)
+            influence = self._factor_influence(
+                period, section, detail.factor_type, detail.factor_value
+            )
+            influence = self._apply_section_lens(
+                influence, section, detail.factor_type, idx
+            )
             support = self._editorialize_support(
                 self._supporting_line(detail, period, idx),
                 section,
@@ -2881,7 +3452,11 @@ class InterpretationEngine:
                 idx,
             )
             if support and idx < 2:
-                lines.append(self._connect_influence_line(influence, support, idx, narrative_seed))
+                lines.append(
+                    self._connect_influence_line(
+                        influence, support, idx, narrative_seed
+                    )
+                )
             else:
                 lines.append(influence)
         return lines[:3]
@@ -2920,7 +3495,9 @@ class InterpretationEngine:
             return yearly.get(factor_type, 99)
         return 99
 
-    def _factor_detail_by_type(self, factor_details: Sequence[FactorDetail], factor_type: str) -> Optional[FactorDetail]:
+    def _factor_detail_by_type(
+        self, factor_details: Sequence[FactorDetail], factor_type: str
+    ) -> Optional[FactorDetail]:
         for detail in factor_details:
             if detail.factor_type == factor_type:
                 return detail
@@ -2948,7 +3525,9 @@ class InterpretationEngine:
             if len(highlights) >= limit:
                 return highlights[:limit]
 
-        for event in self._timeline_events(period, period_events or [], notable_events, limit=3):
+        for event in self._timeline_events(
+            period, period_events or [], notable_events, limit=3
+        ):
             if len(highlights) >= limit:
                 break
             event_line = self._ensure_terminal(event)
@@ -2980,7 +3559,9 @@ class InterpretationEngine:
         if period == Period.DAILY:
             day = timestamp.strftime("%B %d").replace(" 0", " ")
             article = self._indefinite_article(intensity_word)
-            template = self._pick_phrase(INTRO_PATTERNS["daily"], f"{narrative_seed}|intro|daily")
+            template = self._pick_phrase(
+                INTRO_PATTERNS["daily"], f"{narrative_seed}|intro|daily"
+            )
             return template.format(
                 day=day,
                 article=article,
@@ -2990,12 +3571,18 @@ class InterpretationEngine:
                 hook=voice["daily_hook"],
             )
         if period == Period.WEEKLY:
-            template = self._pick_phrase(INTRO_PATTERNS["weekly"], f"{narrative_seed}|intro|weekly")
-            return template.format(sign=sign_label, area=area, hook=voice["weekly_hook"])
+            template = self._pick_phrase(
+                INTRO_PATTERNS["weekly"], f"{narrative_seed}|intro|weekly"
+            )
+            return template.format(
+                sign=sign_label, area=area, hook=voice["weekly_hook"]
+            )
         if period == Period.MONTHLY:
             month_name = timestamp.strftime("%B %Y")
             article = self._indefinite_article(intensity_word)
-            template = self._pick_phrase(INTRO_PATTERNS["monthly"], f"{narrative_seed}|intro|monthly")
+            template = self._pick_phrase(
+                INTRO_PATTERNS["monthly"], f"{narrative_seed}|intro|monthly"
+            )
             return template.format(
                 month_year=month_name,
                 article=article,
@@ -3003,7 +3590,9 @@ class InterpretationEngine:
                 sign=sign_label,
                 area=area,
             )
-        template = self._pick_phrase(INTRO_PATTERNS["yearly"], f"{narrative_seed}|intro|yearly")
+        template = self._pick_phrase(
+            INTRO_PATTERNS["yearly"], f"{narrative_seed}|intro|yearly"
+        )
         return template.format(year=timestamp.year, sign=sign_label, area=area)
 
     def _period_event_line(
@@ -3014,20 +3603,34 @@ class InterpretationEngine:
         narrative_seed: str,
     ) -> str:
         if period == Period.DAILY:
-            events = self._timeline_events(period, period_events, notable_events, limit=1)
+            events = self._timeline_events(
+                period, period_events, notable_events, limit=1
+            )
             if not events:
                 return ""
             return f" {events[0]}."
 
         if period == Period.WEEKLY:
-            cues = self._pick_phrase(EVENT_ANCHOR_OPTIONS["weekly"], f"{narrative_seed}|anchors|weekly")
-            events = self._timeline_events(period, period_events, notable_events, limit=3)
+            cues = self._pick_phrase(
+                EVENT_ANCHOR_OPTIONS["weekly"], f"{narrative_seed}|anchors|weekly"
+            )
+            events = self._timeline_events(
+                period, period_events, notable_events, limit=3
+            )
         elif period == Period.MONTHLY:
-            cues = self._pick_phrase(EVENT_ANCHOR_OPTIONS["monthly"], f"{narrative_seed}|anchors|monthly")
-            events = self._timeline_events(period, period_events, notable_events, limit=3)
+            cues = self._pick_phrase(
+                EVENT_ANCHOR_OPTIONS["monthly"], f"{narrative_seed}|anchors|monthly"
+            )
+            events = self._timeline_events(
+                period, period_events, notable_events, limit=3
+            )
         else:
-            cues = self._pick_phrase(EVENT_ANCHOR_OPTIONS["yearly"], f"{narrative_seed}|anchors|yearly")
-            events = self._timeline_events(period, period_events, notable_events, limit=3)
+            cues = self._pick_phrase(
+                EVENT_ANCHOR_OPTIONS["yearly"], f"{narrative_seed}|anchors|yearly"
+            )
+            events = self._timeline_events(
+                period, period_events, notable_events, limit=3
+            )
 
         if not events:
             return ""
@@ -3065,20 +3668,37 @@ class InterpretationEngine:
             return ""
         return self._ensure_terminal(tip)
 
-    def _factor_highlight(self, period: Period, section: Section, detail: FactorDetail) -> str:
+    def _factor_highlight(
+        self, period: Period, section: Section, detail: FactorDetail
+    ) -> str:
         readable = self._readable_factor_value(detail.factor_value)
 
-        if detail.factor_type in ("weekly_theme_archetypes", "monthly_theme_archetypes", "yearly_theme_archetypes"):
-            return self._ensure_terminal(f"{readable.capitalize()} is setting the tone; consistency beats urgency")
+        if detail.factor_type in (
+            "weekly_theme_archetypes",
+            "monthly_theme_archetypes",
+            "yearly_theme_archetypes",
+        ):
+            return self._ensure_terminal(
+                f"{readable.capitalize()} is setting the tone; consistency beats urgency"
+            )
         if detail.factor_type == "retrograde_archetypes":
-            return self._ensure_terminal(f"{readable.capitalize()} favors review, cleanup, and smarter timing")
+            return self._ensure_terminal(
+                f"{readable.capitalize()} favors review, cleanup, and smarter timing"
+            )
         if detail.factor_type == "ingress_archetypes":
-            return self._ensure_terminal(f"{readable.capitalize()} marks a pivot in focus and pacing")
+            return self._ensure_terminal(
+                f"{readable.capitalize()} marks a pivot in focus and pacing"
+            )
         if detail.factor_type == "eclipse_archetypes":
             return self._ensure_terminal(
                 f"{readable.capitalize()} increases consequence, so intentional choices matter more"
             )
-        if detail.factor_type in ("daily_house_focus", "weekly_house_focus", "monthly_house_focus", "yearly_house_focus"):
+        if detail.factor_type in (
+            "daily_house_focus",
+            "weekly_house_focus",
+            "monthly_house_focus",
+            "yearly_house_focus",
+        ):
             focus = self._house_focus_line(detail.factor_value, section=section)
             return self._ensure_terminal(
                 f"House activation highlights {focus} as the most activated life areas this cycle"
@@ -3091,7 +3711,9 @@ class InterpretationEngine:
             factor_value=detail.factor_value,
         )
 
-    def _factor_influence(self, period: Period, section: Section, factor_type: str, factor_value: str) -> str:
+    def _factor_influence(
+        self, period: Period, section: Section, factor_type: str, factor_value: str
+    ) -> str:
         readable = self._readable_factor_value(factor_value)
         sign_tone = self._sign_tone_phrase(factor_value)
 
@@ -3199,7 +3821,11 @@ class InterpretationEngine:
                 return mapped
             return f"Transit driver {readable} is influencing decisions in this cycle."
 
-        if factor_type in ("weekly_theme_archetypes", "monthly_theme_archetypes", "yearly_theme_archetypes"):
+        if factor_type in (
+            "weekly_theme_archetypes",
+            "monthly_theme_archetypes",
+            "yearly_theme_archetypes",
+        ):
             return self._factor_line_variation(
                 [
                     "Core theme is {readable}; consistency matters more than speed.",
@@ -3264,7 +3890,9 @@ class InterpretationEngine:
             if factor_value.endswith("_focus"):
                 planet = factor_value.replace("_focus", "").replace("_", " ").title()
                 return f"{planet} is the active focus; prioritize its themes for faster traction."
-            return f"Planetary focus is {readable}; this is where traction builds fastest."
+            return (
+                f"Planetary focus is {readable}; this is where traction builds fastest."
+            )
         if factor_type == "eclipse_archetypes":
             if factor_value == "no_eclipse":
                 return "Eclipse activity is low this cycle, so consistency and pacing carry the edge."
@@ -3292,11 +3920,16 @@ class InterpretationEngine:
             }
             return mapping.get(
                 factor_value,
-                f"Outer-planet thread of {readable} shapes slower but durable background effects."
+                f"Outer-planet thread of {readable} shapes slower but durable background effects.",
             )
         if factor_type == "nodal_axis":
             return f"Nodal axis emphasis on {readable} points toward growth through reorientation."
-        if factor_type in ("daily_house_focus", "weekly_house_focus", "monthly_house_focus", "yearly_house_focus"):
+        if factor_type in (
+            "daily_house_focus",
+            "weekly_house_focus",
+            "monthly_house_focus",
+            "yearly_house_focus",
+        ):
             focus = self._house_focus_line(factor_value, section=section)
             house_label = readable.replace(" house", "").strip()
             return self._factor_line_variation(
@@ -3324,7 +3957,9 @@ class InterpretationEngine:
             return SECTION_VOICE[section]
         return SECTION_VOICE[Section.GENERAL]
 
-    def _apply_section_lens(self, line: str, section: Section, factor_type: str, index: int) -> str:
+    def _apply_section_lens(
+        self, line: str, section: Section, factor_type: str, index: int
+    ) -> str:
         if index != 0 or section == Section.GENERAL:
             return line
         lens_map = {
@@ -3410,7 +4045,9 @@ class InterpretationEngine:
             return []
 
         shortlist_size = max(limit * 3, limit)
-        prioritized = sorted(candidates, key=lambda row: (row[0], row[2]))[:shortlist_size]
+        prioritized = sorted(candidates, key=lambda row: (row[0], row[2]))[
+            :shortlist_size
+        ]
         chronological = sorted(
             prioritized,
             key=lambda row: (
@@ -3421,7 +4058,11 @@ class InterpretationEngine:
         picked: List[str] = []
         used_dates = set()
         for _, date_key, _, text in chronological:
-            if period in (Period.WEEKLY, Period.MONTHLY, Period.YEARLY) and date_key is not None and date_key in used_dates:
+            if (
+                period in (Period.WEEKLY, Period.MONTHLY, Period.YEARLY)
+                and date_key is not None
+                and date_key in used_dates
+            ):
                 continue
             if date_key is not None:
                 used_dates.add(date_key)
@@ -3451,7 +4092,12 @@ class InterpretationEngine:
                 elif "direct" in lowered:
                     detail = "stations direct"
             return f"{event.body1} {detail} on {date_part}"
-        if event_type == "exact_aspect" and event.body1 and event.body2 and event.aspect:
+        if (
+            event_type == "exact_aspect"
+            and event.body1
+            and event.body2
+            and event.aspect
+        ):
             return f"{event.body1} {event.aspect} {event.body2} peaks on {date_part}"
         if event_type == "lunation":
             label = "New Moon window"
@@ -3491,9 +4137,30 @@ class InterpretationEngine:
         if period == Period.WEEKLY:
             order = ["Moon", "Mercury", "Venus", "Mars", "Sun", "Jupiter", "Saturn"]
         elif period == Period.MONTHLY:
-            order = ["Sun", "Mercury", "Venus", "Mars", "Moon", "Jupiter", "Saturn", "North Node", "South Node"]
+            order = [
+                "Sun",
+                "Mercury",
+                "Venus",
+                "Mars",
+                "Moon",
+                "Jupiter",
+                "Saturn",
+                "North Node",
+                "South Node",
+            ]
         elif period == Period.YEARLY:
-            order = ["Jupiter", "Saturn", "North Node", "South Node", "Uranus", "Neptune", "Pluto", "Chiron", "Sun", "Moon"]
+            order = [
+                "Jupiter",
+                "Saturn",
+                "North Node",
+                "South Node",
+                "Uranus",
+                "Neptune",
+                "Pluto",
+                "Chiron",
+                "Sun",
+                "Moon",
+            ]
         else:
             order = ["Moon", "Sun", "Mercury", "Venus", "Mars"]
         if body in order:
@@ -3528,7 +4195,9 @@ class InterpretationEngine:
             return event.rsplit(" on ", 1)[0]
         return event
 
-    def _supporting_line(self, detail: FactorDetail, period: Period, position: int) -> str:
+    def _supporting_line(
+        self, detail: FactorDetail, period: Period, position: int
+    ) -> str:
         tip_key = {
             Period.DAILY: "daily_tip",
             Period.WEEKLY: "weekly_tip",
@@ -3548,7 +4217,9 @@ class InterpretationEngine:
                 return cleaned
         return ""
 
-    def _editorialize_tip_text(self, tip: str, section: Section, period: Period, narrative_seed: str) -> str:
+    def _editorialize_tip_text(
+        self, tip: str, section: Section, period: Period, narrative_seed: str
+    ) -> str:
         text = self._clean_line(tip)
         if not text:
             return ""
@@ -3565,19 +4236,42 @@ class InterpretationEngine:
         if "?" in text:
             prompt, _, remainder = text.partition("?")
             question = f"{prompt.strip()}?"
-            tail = self._support_tail(section, "question", f"{narrative_seed}|close_tip", 0)
+            tail = self._support_tail(
+                section, "question", f"{narrative_seed}|close_tip", 0
+            )
             if remainder.strip():
                 return self._ensure_terminal(f"{question} {remainder.strip()} {tail}")
             return self._ensure_terminal(f"{question} {tail}")
 
-        if lower.startswith(("start ", "pair ", "delegate ", "schedule ", "invest ", "end ", "set ", "block ", "write ", "review ", "choose ", "focus ", "avoid ", "use ")):
-            tail = self._support_tail(section, "action", f"{narrative_seed}|close_tip", 0)
+        if lower.startswith(
+            (
+                "start ",
+                "pair ",
+                "delegate ",
+                "schedule ",
+                "invest ",
+                "end ",
+                "set ",
+                "block ",
+                "write ",
+                "review ",
+                "choose ",
+                "focus ",
+                "avoid ",
+                "use ",
+            )
+        ):
+            tail = self._support_tail(
+                section, "action", f"{narrative_seed}|close_tip", 0
+            )
             return self._ensure_terminal(f"{text} {tail}")
 
         tail = self._support_tail(section, "reflect", f"{narrative_seed}|close_tip", 0)
         return self._ensure_terminal(f"{text} {tail}")
 
-    def _editorialize_support(self, line: str, section: Section, narrative_seed: str, index: int) -> str:
+    def _editorialize_support(
+        self, line: str, section: Section, narrative_seed: str, index: int
+    ) -> str:
         text = self._clean_line(line)
         if not text:
             return ""
@@ -3589,7 +4283,24 @@ class InterpretationEngine:
         elif lower.startswith("ask:"):
             text = text.split(":", 1)[1].strip()
 
-        if lower.startswith(("start ", "pair ", "delegate ", "schedule ", "invest ", "end ", "set ", "block ", "write ", "review ", "choose ", "focus ", "avoid ", "use ")):
+        if lower.startswith(
+            (
+                "start ",
+                "pair ",
+                "delegate ",
+                "schedule ",
+                "invest ",
+                "end ",
+                "set ",
+                "block ",
+                "write ",
+                "review ",
+                "choose ",
+                "focus ",
+                "avoid ",
+                "use ",
+            )
+        ):
             opener = self._pick_phrase(
                 SUPPORT_ACTION_OPENERS,
                 f"{narrative_seed}|support_action_opener|{section.value}|{index}",
@@ -3598,17 +4309,25 @@ class InterpretationEngine:
                 phrased_text = text
             else:
                 phrased_text = opener.format(text=self._lowercase_initial(text))
-            phrased_text = phrased_text[:1].upper() + phrased_text[1:] if phrased_text else phrased_text
+            phrased_text = (
+                phrased_text[:1].upper() + phrased_text[1:]
+                if phrased_text
+                else phrased_text
+            )
             tail = self._support_tail(section, "action", narrative_seed, index)
             return self._ensure_terminal(f"{phrased_text} {tail}")
 
         tail = self._support_tail(section, "reflect", narrative_seed, index)
         return self._ensure_terminal(f"{text} {tail}")
 
-    def _support_tail(self, section: Section, mode: str, narrative_seed: str, index: int) -> str:
+    def _support_tail(
+        self, section: Section, mode: str, narrative_seed: str, index: int
+    ) -> str:
         section_tails = SUPPORT_TAILS.get(section, SUPPORT_TAILS[Section.GENERAL])
         options = section_tails.get(mode, SUPPORT_TAILS[Section.GENERAL]["reflect"])
-        return self._pick_phrase(options, f"{narrative_seed}|support_tail|{section.value}|{mode}|{index}")
+        return self._pick_phrase(
+            options, f"{narrative_seed}|support_tail|{section.value}|{mode}|{index}"
+        )
 
     def _ensure_terminal(self, text: str) -> str:
         out = self._clean_line(text)
@@ -3618,7 +4337,9 @@ class InterpretationEngine:
             return out
         return f"{out}."
 
-    def _connect_influence_line(self, influence: str, support: str, index: int, narrative_seed: str) -> str:
+    def _connect_influence_line(
+        self, influence: str, support: str, index: int, narrative_seed: str
+    ) -> str:
         if index <= 0:
             return f"{influence} {support}"
         connector = self._pick_phrase(
@@ -3628,13 +4349,17 @@ class InterpretationEngine:
         influence = self._decapitalize_leading(influence)
         return f"{connector} {influence} {support}"
 
-    def _dynamic_close_line(self, base: str, period_key: str, narrative_seed: str) -> str:
+    def _dynamic_close_line(
+        self, base: str, period_key: str, narrative_seed: str
+    ) -> str:
         options = [
             base,
             f"{base} Keep this as your closing compass.",
             f"{base} Let that set the next move.",
         ]
-        return self._pick_phrase(options, f"{narrative_seed}|dynamic_close|{period_key}")
+        return self._pick_phrase(
+            options, f"{narrative_seed}|dynamic_close|{period_key}"
+        )
 
     def _smooth_narrative(self, paragraph: str) -> str:
         text = " ".join(paragraph.split())
@@ -3645,7 +4370,9 @@ class InterpretationEngine:
         text = text.replace("Final note: Final note:", "Final note:")
         text = text.replace("Bottom line: Bottom line:", "Bottom line:")
         text = re.sub(r"\s+([!?])", r"\1", text)
-        segments = [chunk.strip() for chunk in re.split(r"(?<=[.!?])\s+", text) if chunk.strip()]
+        segments = [
+            chunk.strip() for chunk in re.split(r"(?<=[.!?])\s+", text) if chunk.strip()
+        ]
         deduped: List[str] = []
         seen = set()
         for segment in segments:
@@ -3729,7 +4456,7 @@ class InterpretationEngine:
             "Opposition ",
         ):
             if text.startswith(token):
-                return token.lower() + text[len(token):]
+                return token.lower() + text[len(token) :]
         return text
 
     def _lowercase_initial(self, text: str) -> str:
@@ -3742,4 +4469,8 @@ class InterpretationEngine:
     def _as_str_list(self, value) -> List[str]:
         if not isinstance(value, list):
             return []
-        return [self._clean_line(item) for item in value if isinstance(item, str) and self._clean_line(item)]
+        return [
+            self._clean_line(item)
+            for item in value
+            if isinstance(item, str) and self._clean_line(item)
+        ]

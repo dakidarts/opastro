@@ -65,7 +65,9 @@ class ProfileStore:
             return None
         return dict(profile)
 
-    def save_profile(self, name: str, profile: Dict[str, Any], *, set_active: bool = False) -> None:
+    def save_profile(
+        self, name: str, profile: Dict[str, Any], *, set_active: bool = False
+    ) -> None:
         payload = self._load()
         payload["profiles"][name] = profile
         if set_active or payload.get("active_profile") is None:
@@ -79,4 +81,3 @@ class ProfileStore:
         payload["active_profile"] = name
         self._save(payload)
         return True
-

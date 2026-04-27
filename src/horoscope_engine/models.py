@@ -103,19 +103,8 @@ class BirthData(BaseModel):
     timezone: Optional[str] = None
 
 
-class HoroscopeRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    period: Period
-    sign: Optional[str] = Field(default=None, description="Zodiac sign name")
-    target_date: Optional[date] = None
-    birth: Optional[BirthData] = None
-    sections: Optional[List[Section]] = None
-    zodiac_system: Optional[ZodiacSystem] = None
-    ayanamsa: Optional[AyanamsaSystem] = None
-    house_system: Optional[HouseSystem] = None
-    node_type: Optional[NodeType] = None
-    tenant_id: Optional[str] = Field(default=None, max_length=64)
+class _HoroscopeRequestMixin:
+    """Shared validators for horoscope-style request models."""
 
     @field_validator("sign")
     @classmethod
@@ -136,11 +125,28 @@ class HoroscopeRequest(BaseModel):
         for entry in entries:
             raw = entry.value if isinstance(entry, Section) else str(entry)
             if raw.strip().lower() == "love":
-                raise ValueError("Section 'love' is no longer supported. Use 'love_singles' and/or 'love_couples'.")
+                raise ValueError(
+                    "Section 'love' is no longer supported. Use 'love_singles' and/or 'love_couples'."
+                )
         return value
 
 
-class BirthdayHoroscopeRequest(BaseModel):
+class HoroscopeRequest(_HoroscopeRequestMixin, BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    period: Period
+    sign: Optional[str] = Field(default=None, description="Zodiac sign name")
+    target_date: Optional[date] = None
+    birth: Optional[BirthData] = None
+    sections: Optional[List[Section]] = None
+    zodiac_system: Optional[ZodiacSystem] = None
+    ayanamsa: Optional[AyanamsaSystem] = None
+    house_system: Optional[HouseSystem] = None
+    node_type: Optional[NodeType] = None
+    tenant_id: Optional[str] = Field(default=None, max_length=64)
+
+
+class BirthdayHoroscopeRequest(_HoroscopeRequestMixin, BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     sign: Optional[str] = Field(default=None, description="Zodiac sign name")
@@ -159,30 +165,8 @@ class BirthdayHoroscopeRequest(BaseModel):
     node_type: Optional[NodeType] = None
     tenant_id: Optional[str] = Field(default=None, max_length=64)
 
-    @field_validator("sign")
-    @classmethod
-    def normalize_sign(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return value
-        normalized = value.strip().upper()
-        if normalized not in ZODIAC_SIGNS:
-            raise ValueError("Unsupported zodiac sign")
-        return normalized
 
-    @field_validator("sections", mode="before")
-    @classmethod
-    def reject_legacy_love_section(cls, value):
-        if value is None:
-            return value
-        entries = value if isinstance(value, list) else [value]
-        for entry in entries:
-            raw = entry.value if isinstance(entry, Section) else str(entry)
-            if raw.strip().lower() == "love":
-                raise ValueError("Section 'love' is no longer supported. Use 'love_singles' and/or 'love_couples'.")
-        return value
-
-
-class PlanetHoroscopeRequest(BaseModel):
+class PlanetHoroscopeRequest(_HoroscopeRequestMixin, BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     period: Period
@@ -197,28 +181,6 @@ class PlanetHoroscopeRequest(BaseModel):
     node_type: Optional[NodeType] = None
     tenant_id: Optional[str] = Field(default=None, max_length=64)
 
-    @field_validator("sign")
-    @classmethod
-    def normalize_sign(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return value
-        normalized = value.strip().upper()
-        if normalized not in ZODIAC_SIGNS:
-            raise ValueError("Unsupported zodiac sign")
-        return normalized
-
-    @field_validator("sections", mode="before")
-    @classmethod
-    def reject_legacy_love_section(cls, value):
-        if value is None:
-            return value
-        entries = value if isinstance(value, list) else [value]
-        for entry in entries:
-            raw = entry.value if isinstance(entry, Section) else str(entry)
-            if raw.strip().lower() == "love":
-                raise ValueError("Section 'love' is no longer supported. Use 'love_singles' and/or 'love_couples'.")
-        return value
-
 
 class NatalBirthchartRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -230,6 +192,8 @@ class NatalBirthchartRequest(BaseModel):
     house_system: Optional[HouseSystem] = None
     node_type: Optional[NodeType] = None
     tenant_id: Optional[str] = Field(default=None, max_length=64)
+    include_fixed_stars: bool = Field(default=False)
+    include_arabic_parts: bool = Field(default=False)
 
 
 class NatalDominantSignature(BaseModel):
@@ -342,6 +306,30 @@ class Aspect(BaseModel):
     applying: bool
 
 
+class FixedStarPosition(BaseModel):
+    name: str
+    longitude: float
+    latitude: float
+    sign: str
+    degree_in_sign: float
+    magnitude: float
+    nature: str = Field(
+        default="",
+        description="Traditional nature: benefic, malefic, mixed, or neutral",
+    )
+    orb: float = Field(
+        default=1.0, description="Recommended orb for conjunctions with this star"
+    )
+
+
+class ArabicPartPosition(BaseModel):
+    name: str
+    longitude: float
+    sign: str
+    degree_in_sign: float
+    formula: str
+
+
 class ChartSnapshot(BaseModel):
     timestamp: datetime
     zodiac_system: str
@@ -355,6 +343,8 @@ class ChartSnapshot(BaseModel):
     house_cusps: Optional[List[float]] = None
     positions: List[BodyPosition]
     aspects: List[Aspect]
+    fixed_stars: List[FixedStarPosition] = Field(default_factory=list)
+    arabic_parts: List[ArabicPartPosition] = Field(default_factory=list)
 
 
 class PeriodEvent(BaseModel):
@@ -435,3 +425,90 @@ class PregenRequest(BaseModel):
     period: Period
     target_date: date
     tenant_id: Optional[str] = None
+
+
+class SynastryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    birth1: BirthData
+    birth2: BirthData
+    user_name1: Optional[str] = Field(default=None, max_length=80)
+    user_name2: Optional[str] = Field(default=None, max_length=80)
+    zodiac_system: Optional[ZodiacSystem] = None
+    ayanamsa: Optional[AyanamsaSystem] = None
+    house_system: Optional[HouseSystem] = None
+    node_type: Optional[NodeType] = None
+    tenant_id: Optional[str] = Field(default=None, max_length=64)
+
+
+class SynastryAspect(BaseModel):
+    body1: str
+    body2: str
+    aspect: str
+    orb: float
+    exact: bool
+    applying: bool
+    nature: str = Field(
+        default="neutral", description="supportive, challenging, or neutral"
+    )
+
+
+class SynastryOverlay(BaseModel):
+    house: int = Field(..., ge=1, le=12)
+    cusp_sign: str
+    planets: List[str] = Field(default_factory=list)
+    interpretation_hint: str = Field(default="")
+
+
+class SynastryScore(BaseModel):
+    category: str
+    score: float = Field(..., ge=0.0, le=100.0)
+    emphasis: str
+
+
+class SynastryResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    report_type: ReportType = ReportType.NATAL_BIRTHCHART
+    user_name1: Optional[str] = None
+    user_name2: Optional[str] = None
+    snapshot1: ChartSnapshot
+    snapshot2: ChartSnapshot
+    inter_aspects: List[SynastryAspect] = Field(default_factory=list)
+    house_overlays: List[SynastryOverlay] = Field(default_factory=list)
+    scores: List[SynastryScore] = Field(default_factory=list)
+    composite_summary: str = Field(default="")
+
+
+class TransitEvent(BaseModel):
+    date: date
+    transit_planet: str
+    natal_planet: str
+    aspect: str
+    orb: float
+    exact: bool
+    intensity: float = Field(..., ge=0.0, le=1.0)
+    summary: str
+
+
+class TransitTimelineRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    birth: BirthData
+    date_from: Optional[date] = None
+    date_to: Optional[date] = None
+    zodiac_system: Optional[ZodiacSystem] = None
+    ayanamsa: Optional[AyanamsaSystem] = None
+    house_system: Optional[HouseSystem] = None
+    node_type: Optional[NodeType] = None
+    tenant_id: Optional[str] = Field(default=None, max_length=64)
+
+
+class TransitTimelineResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    birth: BirthData
+    date_from: date
+    date_to: date
+    events: List[TransitEvent] = Field(default_factory=list)
+    event_count: int = 0

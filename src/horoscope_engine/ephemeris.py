@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+import logging
 import threading
-import warnings
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -9,11 +9,17 @@ from typing import Dict, List, Optional, Sequence, Tuple
 import swisseph as swe
 
 from .config import EphemerisConfig
-from .models import BodyPosition, ChartSnapshot, Aspect
+from .models import (
+    ArabicPartPosition,
+    BodyPosition,
+    ChartSnapshot,
+    Aspect,
+    FixedStarPosition,
+)
 
 
+logger = logging.getLogger(__name__)
 SWE_LOCK = threading.Lock()
-MISSING_BODY_WARNED: set[str] = set()
 
 
 @dataclass(frozen=True)
@@ -36,7 +42,11 @@ MAJOR_BODIES = [
     BodySpec("Pluto", swe.PLUTO, "planet"),
 ]
 
-MINOR_BODIES = [
+
+# Candidate minor bodies.  We probe each one at import time and keep only
+# those whose ephemeris data is available.  This avoids noisy RuntimeWarning
+# spew for users who haven't downloaded the optional ``seas_18.se1`` file.
+_MINOR_BODY_CANDIDATES: list[BodySpec] = [
     BodySpec("Chiron", swe.CHIRON, "minor"),
     BodySpec("Ceres", swe.CERES, "asteroid"),
     BodySpec("North Node", None, "node"),
@@ -45,9 +55,42 @@ MINOR_BODIES = [
     BodySpec("Pallas", swe.PALLAS, "asteroid"),
     BodySpec("Juno", swe.JUNO, "asteroid"),
     BodySpec("Vesta", swe.VESTA, "asteroid"),
-    # Fallback to asteroid number when ERIS constant is unavailable in the local swisseph build.
     BodySpec("Eris", getattr(swe, "ERIS", swe.AST_OFFSET + 136199), "dwarf"),
 ]
+
+
+def _probe_minor_body(body: BodySpec) -> bool:
+    """Return ``True`` if ``body`` can be calculated with current ephemeris."""
+    if body.swe_id is None:
+        return True
+    try:
+        test_jd = swe.julday(2024, 1, 1, 12.0)
+        swe.calc_ut(test_jd, body.swe_id, swe.FLG_SWIEPH)
+        return True
+    except swe.Error:
+        # Try Moshier fallback (built-in, no extra files).
+        try:
+            swe.calc_ut(test_jd, body.swe_id, swe.FLG_MOSEPH)
+            return True
+        except swe.Error:
+            logger.debug(
+                "Minor body %s (id=%s) unavailable with current ephemeris files. "
+                "Run 'opastro doctor --download-ephemeris' to fetch optional files.",
+                body.name,
+                body.swe_id,
+            )
+            return False
+
+
+# Build the runtime list of minor bodies once at import time.
+MINOR_BODIES: list[BodySpec] = []
+for _body in _MINOR_BODY_CANDIDATES:
+    if _body.name in ("North Node", "South Node"):
+        MINOR_BODIES.append(_body)
+        continue
+    if _probe_minor_body(_body):
+        MINOR_BODIES.append(_body)
+
 
 ASPECTS = {
     "conjunction": (0.0, "major"),
@@ -60,6 +103,20 @@ ASPECTS = {
     "semi-square": (45.0, "minor"),
     "sesquiquadrate": (135.0, "minor"),
 }
+
+# Fixed stars supported by Swiss Ephemeris (name, SE star name, magnitude, nature, orb)
+FIXED_STARS = [
+    ("Regulus", "Regulus", 1.35, "mixed", 2.0),
+    ("Spica", "Spica", 0.98, "benefic", 2.0),
+    ("Algol", "Algol", 2.12, "malefic", 1.5),
+    ("Antares", "Antares", 0.96, "malefic", 2.0),
+    ("Aldebaran", "Aldebaran", 0.85, "malefic", 2.0),
+    ("Pollux", "Pollux", 1.14, "mixed", 1.5),
+    ("Vega", "Vega", 0.03, "benefic", 2.0),
+    ("Sirius", "Sirius", -1.46, "benefic", 2.0),
+    ("Arcturus", "Arcturus", -0.05, "benefic", 2.0),
+    ("Deneb Algedi", "Deneb Algedi", 2.85, "mixed", 1.5),
+]
 
 
 class EphemerisEngine:
@@ -106,20 +163,26 @@ class EphemerisEngine:
         ]
         return signs[index], degree_in_sign
 
-    def _calc_body(self, body: BodySpec, jd: float, flags: int) -> Tuple[float, float, float]:
+    def _calc_body(
+        self, body: BodySpec, jd: float, flags: int
+    ) -> Tuple[float, float, float]:
         if body.swe_id is None:
             raise ValueError("Body requires derived longitude")
         try:
             result, _ = swe.calc_ut(jd, body.swe_id, flags)
         except swe.Error:
             # Fallback when Swiss ephemeris files are not available in runtime.
-            result, _ = swe.calc_ut(jd, body.swe_id, (flags & ~swe.FLG_SWIEPH) | swe.FLG_MOSEPH)
+            result, _ = swe.calc_ut(
+                jd, body.swe_id, (flags & ~swe.FLG_SWIEPH) | swe.FLG_MOSEPH
+            )
         longitude = result[0]
         latitude = result[1]
         speed = result[3]
         return longitude, latitude, speed
 
-    def _house_from_cusps(self, longitude: float, cusps: Sequence[float]) -> Optional[int]:
+    def _house_from_cusps(
+        self, longitude: float, cusps: Sequence[float]
+    ) -> Optional[int]:
         if len(cusps) != 12:
             return None
         lon = longitude % 360.0
@@ -135,7 +198,9 @@ class EphemerisEngine:
                 return idx + 1
         return None
 
-    def get_positions(self, dt: datetime, ayanamsa_value: float) -> Dict[str, BodyPosition]:
+    def get_positions(
+        self, dt: datetime, ayanamsa_value: float
+    ) -> Dict[str, BodyPosition]:
         jd = self.datetime_to_julian(dt)
         positions: Dict[str, BodyPosition] = {}
         tropical_flags = self._flags(sidereal=False)
@@ -178,13 +243,9 @@ class EphemerisEngine:
                 lon_t, _, _ = self._calc_body(body, jd, tropical_flags)
                 lon_s, lat_s, speed_s = self._calc_body(body, jd, sidereal_flags)
             except swe.Error:
-                if body.name in {"Chiron", "Pallas", "Juno", "Vesta", "Eris"} and body.name not in MISSING_BODY_WARNED:
-                    warnings.warn(
-                        f"Skipping {body.name}: Swiss Ephemeris data not available for this body at current ephemeris path.",
-                        RuntimeWarning,
-                        stacklevel=2,
-                    )
-                    MISSING_BODY_WARNED.add(body.name)
+                # Already probed at import time, but guard against race
+                # conditions or path changes after engine creation.
+                logger.debug("Skipping %s: calculation failed at runtime.", body.name)
                 continue
             trop_sign, _ = self._longitude_to_sign(lon_t)
             sid_sign, _ = self._longitude_to_sign(lon_s)
@@ -239,11 +300,96 @@ class EphemerisEngine:
                         )
         return aspects
 
+    def get_fixed_stars(self, dt: datetime) -> List[FixedStarPosition]:
+        jd = self.datetime_to_julian(dt)
+        stars: List[FixedStarPosition] = []
+        for display_name, se_name, magnitude, nature, orb in FIXED_STARS:
+            try:
+                result = swe.fixstar2_ut(se_name, jd)
+                # result = ((longitude, latitude, ...), star_name)
+                data = (
+                    result[0]
+                    if isinstance(result, tuple) and len(result) > 1
+                    else result
+                )
+                longitude = float(data[0])
+                latitude = float(data[1])
+                sign, degree = self._longitude_to_sign(longitude)
+                stars.append(
+                    FixedStarPosition(
+                        name=display_name,
+                        longitude=round(longitude, 6),
+                        latitude=round(latitude, 6),
+                        sign=sign,
+                        degree_in_sign=round(degree, 3),
+                        magnitude=magnitude,
+                        nature=nature,
+                        orb=orb,
+                    )
+                )
+            except swe.Error:
+                continue
+        return stars
+
+    def get_arabic_parts(
+        self, positions: Dict[str, BodyPosition], ascendant: float
+    ) -> List[ArabicPartPosition]:
+        """Calculate key Arabic parts from a completed natal snapshot.
+
+        Part of Fortune = Ascendant + Moon - Sun (day birth)
+                        = Ascendant + Sun - Moon (night birth)
+        Part of Spirit  = Ascendant + Sun - Moon (day birth)
+                        = Ascendant + Moon - Sun (night birth)
+        """
+        parts: List[ArabicPartPosition] = []
+        sun = positions.get("Sun")
+        moon = positions.get("Moon")
+        if sun is None or moon is None:
+            return parts
+
+        sun_lon = sun.longitude
+        moon_lon = moon.longitude
+
+        # Day birth if Sun is above the ascendant/descendant axis (simplified)
+        is_day = abs((sun_lon - ascendant) % 360) < 180
+
+        if is_day:
+            pof_lon = (ascendant + moon_lon - sun_lon) % 360
+            pos_lon = (ascendant + sun_lon - moon_lon) % 360
+        else:
+            pof_lon = (ascendant + sun_lon - moon_lon) % 360
+            pos_lon = (ascendant + moon_lon - sun_lon) % 360
+
+        pof_sign, pof_deg = self._longitude_to_sign(pof_lon)
+        pos_sign, pos_deg = self._longitude_to_sign(pos_lon)
+
+        parts.append(
+            ArabicPartPosition(
+                name="Part of Fortune",
+                longitude=round(pof_lon, 6),
+                sign=pof_sign,
+                degree_in_sign=round(pof_deg, 3),
+                formula="Asc + Moon - Sun" if is_day else "Asc + Sun - Moon",
+            )
+        )
+        parts.append(
+            ArabicPartPosition(
+                name="Part of Spirit",
+                longitude=round(pos_lon, 6),
+                sign=pos_sign,
+                degree_in_sign=round(pos_deg, 3),
+                formula="Asc + Sun - Moon" if is_day else "Asc + Moon - Sun",
+            )
+        )
+        return parts
+
     def chart_snapshot(
         self,
         dt: datetime,
         include_houses: bool = False,
         coordinates: Optional[Tuple[float, float]] = None,
+        include_fixed_stars: bool = False,
+        include_arabic_parts: bool = False,
     ) -> ChartSnapshot:
         with SWE_LOCK:
             swe.set_sid_mode(self.config.sidereal_mode, 0, 0)
@@ -255,20 +401,33 @@ class EphemerisEngine:
             rising_sign = None
             house_system = None
             house_cusps: Optional[List[float]] = None
+            ascendant = 0.0
 
             if include_houses and coordinates:
                 lat, lon = coordinates
                 flags = self._flags(sidereal=not self._use_tropical())
-                cusps, ascmc = swe.houses_ex(jd, lat, lon, self.config.house_system.encode(), flags)
-                asc_long = ascmc[0]
-                rising_sign, _ = self._longitude_to_sign(asc_long)
+                cusps, ascmc = swe.houses_ex(
+                    jd, lat, lon, self.config.house_system.encode(), flags
+                )
+                ascendant = ascmc[0]
+                rising_sign, _ = self._longitude_to_sign(ascendant)
                 house_system = self.config.house_system
                 house_cusps = [round(float(cusp), 6) for cusp in cusps[:12]]
                 for position in positions.values():
-                    position.house = self._house_from_cusps(position.longitude, house_cusps)
+                    position.house = self._house_from_cusps(
+                        position.longitude, house_cusps
+                    )
 
             aspects = self._calc_aspects(positions)
             ayanamsa_name = swe.get_ayanamsa_name(self.config.sidereal_mode)
+
+            fixed_stars: List[FixedStarPosition] = []
+            if include_fixed_stars:
+                fixed_stars = self.get_fixed_stars(dt)
+
+            arabic_parts: List[ArabicPartPosition] = []
+            if include_arabic_parts and include_houses:
+                arabic_parts = self.get_arabic_parts(positions, ascendant)
 
         return ChartSnapshot(
             timestamp=dt,
@@ -283,4 +442,6 @@ class EphemerisEngine:
             house_cusps=house_cusps,
             positions=list(positions.values()),
             aspects=aspects,
+            fixed_stars=fixed_stars,
+            arabic_parts=arabic_parts,
         )

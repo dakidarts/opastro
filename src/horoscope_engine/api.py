@@ -8,13 +8,14 @@ import os
 from pathlib import Path
 import zipfile
 
-from fastapi import FastAPI, HTTPException, Header, Query
+from fastapi import FastAPI, HTTPException, Header, Query, Request
 from fastapi.responses import Response, JSONResponse
 
 from .cache import cache_from_env
 from .cache_keys import build_cache_key
 from .config import ServiceConfig
 from .healthcheck import run_content_coverage_healthcheck
+from .middleware import ApiKeyMiddleware, RateLimitMiddleware
 from .models import (
     BirthdayHoroscopeRequest,
     HoroscopeRequest,
@@ -24,6 +25,10 @@ from .models import (
     Period,
     PlanetHoroscopeRequest,
     PregenRequest,
+    SynastryRequest,
+    SynastryResponse,
+    TransitTimelineRequest,
+    TransitTimelineResponse,
 )
 from .natal_artifacts import (
     build_natal_report_pdf,
@@ -33,13 +38,19 @@ from .natal_artifacts import (
     build_natal_wheel_svg_split,
     build_house_overlay_map,
 )
-from .observability import MetricsCollector, Timer
+from .observability import (
+    MetricsCollector,
+    Timer,
+    StructuredLogger,
+    generate_request_id,
+)
 from .pregen import pregenerate
 from .service import HoroscopeService
 from .versioning import resolve_version
 
 
 logger = logging.getLogger(__name__)
+structured_log = StructuredLogger("opastro.api")
 
 service_config = ServiceConfig()
 service = HoroscopeService(service_config)
@@ -70,7 +81,44 @@ async def _lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="OpAstro Engine API", version=resolve_version("opastro"), lifespan=_lifespan)
+app = FastAPI(
+    title="OpAstro Engine API",
+    version=resolve_version("opastro"),
+    lifespan=_lifespan,
+)
+
+# Production middleware stack
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(ApiKeyMiddleware)
+
+
+@app.middleware("http")
+async def request_context_middleware(request: Request, call_next):
+    request_id = request.headers.get("X-Request-Id") or generate_request_id()
+    tenant_id = request.headers.get("X-Tenant-Id") or request.headers.get("x-tenant-id")
+    structured_log.set_context(request_id=request_id, tenant_id=tenant_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = request_id
+        return response
+    finally:
+        structured_log.clear_context()
+
+
+@app.exception_handler(ValueError)
+async def value_error_handler(_request: Request, exc: ValueError):
+    return JSONResponse(
+        status_code=400,
+        content={"error": {"type": "validation_error", "message": str(exc)}},
+    )
+
+
+@app.exception_handler(RuntimeError)
+async def runtime_error_handler(_request: Request, exc: RuntimeError):
+    return JSONResponse(
+        status_code=500,
+        content={"error": {"type": "internal_error", "message": str(exc)}},
+    )
 
 
 @app.get("/health")
@@ -78,7 +126,7 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/horoscope", response_model=HoroscopeResponse)
+@app.post("/horoscope", response_model=HoroscopeResponse, tags=["Reports"])
 async def get_horoscope(
     request: HoroscopeRequest,
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
@@ -91,12 +139,18 @@ async def get_horoscope(
         period=request.period,
         sign=request.sign,
         sign_source="provided" if request.sign else "derived",
-        sections=[section.value for section in request.sections] if request.sections else None,
+        sections=[section.value for section in request.sections]
+        if request.sections
+        else None,
         target_date=request.target_date,
         birth_date=birth.date.isoformat() if birth else None,
         birth_time=birth.time if birth else None,
-        birth_latitude=birth.coordinates.latitude if birth and birth.coordinates else None,
-        birth_longitude=birth.coordinates.longitude if birth and birth.coordinates else None,
+        birth_latitude=birth.coordinates.latitude
+        if birth and birth.coordinates
+        else None,
+        birth_longitude=birth.coordinates.longitude
+        if birth and birth.coordinates
+        else None,
         birth_timezone=birth.timezone if birth else None,
         zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
         ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
@@ -117,10 +171,13 @@ async def get_horoscope(
     cache.set(cache_key, response.model_dump_json())
     metrics.record_cache_miss()
     metrics.record_request(timer.elapsed_ms())
+    structured_log.info(
+        "Horoscope generated", sign=response.sign, period=response.period.value
+    )
     return response
 
 
-@app.post("/birthday-horoscope", response_model=HoroscopeResponse)
+@app.post("/birthday-horoscope", response_model=HoroscopeResponse, tags=["Reports"])
 async def get_birthday_horoscope(
     request: BirthdayHoroscopeRequest,
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
@@ -133,12 +190,18 @@ async def get_birthday_horoscope(
         period=Period.YEARLY,
         sign=request.sign,
         sign_source="provided" if request.sign else "derived",
-        sections=[section.value for section in request.sections] if request.sections else None,
+        sections=[section.value for section in request.sections]
+        if request.sections
+        else None,
         target_date=request.target_date,
         birth_date=birth.date.isoformat() if birth else None,
         birth_time=birth.time if birth else None,
-        birth_latitude=birth.coordinates.latitude if birth and birth.coordinates else None,
-        birth_longitude=birth.coordinates.longitude if birth and birth.coordinates else None,
+        birth_latitude=birth.coordinates.latitude
+        if birth and birth.coordinates
+        else None,
+        birth_longitude=birth.coordinates.longitude
+        if birth and birth.coordinates
+        else None,
         birth_timezone=birth.timezone if birth else None,
         zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
         ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
@@ -163,7 +226,7 @@ async def get_birthday_horoscope(
     return response
 
 
-@app.post("/planet-horoscope", response_model=HoroscopeResponse)
+@app.post("/planet-horoscope", response_model=HoroscopeResponse, tags=["Reports"])
 async def get_planet_horoscope(
     request: PlanetHoroscopeRequest,
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
@@ -176,12 +239,18 @@ async def get_planet_horoscope(
         period=request.period,
         sign=request.sign,
         sign_source="provided" if request.sign else "derived",
-        sections=[section.value for section in request.sections] if request.sections else None,
+        sections=[section.value for section in request.sections]
+        if request.sections
+        else None,
         target_date=request.target_date,
         birth_date=birth.date.isoformat() if birth else None,
         birth_time=birth.time if birth else None,
-        birth_latitude=birth.coordinates.latitude if birth and birth.coordinates else None,
-        birth_longitude=birth.coordinates.longitude if birth and birth.coordinates else None,
+        birth_latitude=birth.coordinates.latitude
+        if birth and birth.coordinates
+        else None,
+        birth_longitude=birth.coordinates.longitude
+        if birth and birth.coordinates
+        else None,
         birth_timezone=birth.timezone if birth else None,
         zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
         ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
@@ -206,8 +275,10 @@ async def get_planet_horoscope(
     return response
 
 
-@app.post("/natal-birthchart", response_model=NatalBirthchartResponse)
-@app.post("/natal-birthchart-report", response_model=NatalBirthchartResponse)
+@app.post("/natal-birthchart", response_model=NatalBirthchartResponse, tags=["Natal"])
+@app.post(
+    "/natal-birthchart-report", response_model=NatalBirthchartResponse, tags=["Natal"]
+)
 async def get_natal_birthchart_report(
     request: NatalBirthchartRequest,
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
@@ -223,7 +294,9 @@ async def get_natal_birthchart_report(
     return response
 
 
-def _get_natal_report(request: NatalBirthchartRequest, tenant: str | None) -> NatalBirthchartResponse:
+def _get_natal_report(
+    request: NatalBirthchartRequest, tenant: str | None
+) -> NatalBirthchartResponse:
     birth = request.birth
     cache_key = build_cache_key(
         tenant_id=tenant,
@@ -242,6 +315,8 @@ def _get_natal_report(request: NatalBirthchartRequest, tenant: str | None) -> Na
         house_system=request.house_system.value if request.house_system else None,
         node_type=request.node_type.value if request.node_type else None,
         user_name=request.user_name,
+        include_fixed_stars=request.include_fixed_stars,
+        include_arabic_parts=request.include_arabic_parts,
         key_namespace="natal_birthchart",
     )
     cached = cache.get(cache_key)
@@ -255,12 +330,14 @@ def _get_natal_report(request: NatalBirthchartRequest, tenant: str | None) -> Na
     return response
 
 
-@app.post("/natal-birthchart/wheel.svg")
+@app.post("/natal-birthchart/wheel.svg", tags=["Natal"])
 async def get_natal_wheel_svg(
     request: NatalBirthchartRequest,
     theme: str = Query(default="night", pattern="^(night|day)$"),
     split: bool = Query(default=False),
-    split_layout: str = Query(default="side-by-side", pattern="^(stacked|side-by-side)$"),
+    split_layout: str = Query(
+        default="side-by-side", pattern="^(stacked|side-by-side)$"
+    ),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> Response:
     timer = Timer()
@@ -268,7 +345,9 @@ async def get_natal_wheel_svg(
     try:
         report = _get_natal_report(request, tenant)
         if split:
-            parts = build_natal_wheel_svg_split(report, theme=theme, split_layout=split_layout)
+            parts = build_natal_wheel_svg_split(
+                report, theme=theme, split_layout=split_layout
+            )
             metrics.record_request(timer.elapsed_ms())
             return JSONResponse(content=parts)
         svg = build_natal_wheel_svg(report, theme=theme)
@@ -280,7 +359,7 @@ async def get_natal_wheel_svg(
     return Response(content=svg.encode("utf-8"), media_type="image/svg+xml")
 
 
-@app.post("/natal-birthchart/wheel.png")
+@app.post("/natal-birthchart/wheel.png", tags=["Natal"])
 async def get_natal_wheel_png(
     request: NatalBirthchartRequest,
     theme: str = Query(default="night", pattern="^(night|day)$"),
@@ -299,19 +378,25 @@ async def get_natal_wheel_png(
     return Response(content=png_bytes, media_type="image/png")
 
 
-@app.post("/natal-birthchart/wheel.parts.zip")
+@app.post("/natal-birthchart/wheel.parts.zip", tags=["Natal"])
 async def get_natal_wheel_parts_zip(
     request: NatalBirthchartRequest,
     theme: str = Query(default="night", pattern="^(night|day)$"),
-    split_layout: str = Query(default="side-by-side", pattern="^(stacked|side-by-side)$"),
+    split_layout: str = Query(
+        default="side-by-side", pattern="^(stacked|side-by-side)$"
+    ),
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
 ) -> Response:
     timer = Timer()
     tenant = request.tenant_id or x_tenant_id
     try:
         report = _get_natal_report(request, tenant)
-        svg_parts = build_natal_wheel_svg_split(report, theme=theme, split_layout=split_layout)
-        png_parts = build_natal_wheel_png_split(report, theme=theme, split_layout=split_layout)
+        svg_parts = build_natal_wheel_svg_split(
+            report, theme=theme, split_layout=split_layout
+        )
+        png_parts = build_natal_wheel_png_split(
+            report, theme=theme, split_layout=split_layout
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -350,11 +435,15 @@ async def get_natal_wheel_parts_zip(
         zf.writestr("manifest.json", json.dumps(manifest, indent=2, sort_keys=True))
 
     metrics.record_request(timer.elapsed_ms())
-    headers = {"Content-Disposition": 'attachment; filename="opastro-natal-wheel-parts.zip"'}
-    return Response(content=archive.getvalue(), media_type="application/zip", headers=headers)
+    headers = {
+        "Content-Disposition": 'attachment; filename="opastro-natal-wheel-parts.zip"'
+    }
+    return Response(
+        content=archive.getvalue(), media_type="application/zip", headers=headers
+    )
 
 
-@app.post("/natal-birthchart/house-overlay")
+@app.post("/natal-birthchart/house-overlay", tags=["Natal"])
 async def get_natal_house_overlay(
     request: NatalBirthchartRequest,
     x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
@@ -370,7 +459,7 @@ async def get_natal_house_overlay(
     return JSONResponse(content=payload)
 
 
-@app.post("/natal-birthchart/report.pdf")
+@app.post("/natal-birthchart/report.pdf", tags=["Natal"])
 async def get_natal_report_pdf(
     request: NatalBirthchartRequest,
     theme: str = Query(default="night", pattern="^(night|day)$"),
@@ -388,6 +477,105 @@ async def get_natal_report_pdf(
     metrics.record_request(timer.elapsed_ms())
     headers = {"Content-Disposition": 'attachment; filename="opastro-natal-report.pdf"'}
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
+@app.post("/synastry", response_model=SynastryResponse, tags=["Synastry"])
+async def get_synastry(
+    request: SynastryRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> SynastryResponse:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    cache_key = build_cache_key(
+        tenant_id=tenant,
+        period=Period.YEARLY,
+        sign=None,
+        sign_source="synastry",
+        sections=None,
+        target_date=None,
+        birth_date=request.birth1.date.isoformat(),
+        birth_time=request.birth1.time,
+        birth_latitude=request.birth1.coordinates.latitude
+        if request.birth1.coordinates
+        else None,
+        birth_longitude=request.birth1.coordinates.longitude
+        if request.birth1.coordinates
+        else None,
+        birth_timezone=request.birth1.timezone,
+        zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
+        ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
+        house_system=request.house_system.value if request.house_system else None,
+        node_type=request.node_type.value if request.node_type else None,
+        user_name=f"{request.user_name1 or 'a'}_{request.user_name2 or 'b'}",
+        key_namespace="synastry",
+    )
+    cached = cache.get(cache_key)
+    if cached:
+        metrics.record_cache_hit()
+        metrics.record_request(timer.elapsed_ms())
+        return SynastryResponse.model_validate_json(cached)
+
+    try:
+        response = service.generate_synastry(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    cache.set(cache_key, response.model_dump_json())
+    metrics.record_cache_miss()
+    metrics.record_request(timer.elapsed_ms())
+    structured_log.info(
+        "Synastry generated", user1=response.user_name1, user2=response.user_name2
+    )
+    return response
+
+
+@app.post(
+    "/natal-birthchart/transits", response_model=TransitTimelineResponse, tags=["Natal"]
+)
+async def get_transit_timeline(
+    request: TransitTimelineRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> TransitTimelineResponse:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    cache_key = build_cache_key(
+        tenant_id=tenant,
+        period=Period.DAILY,
+        sign=None,
+        sign_source="transits",
+        sections=None,
+        target_date=request.date_from,
+        birth_date=request.birth.date.isoformat(),
+        birth_time=request.birth.time,
+        birth_latitude=request.birth.coordinates.latitude
+        if request.birth.coordinates
+        else None,
+        birth_longitude=request.birth.coordinates.longitude
+        if request.birth.coordinates
+        else None,
+        birth_timezone=request.birth.timezone,
+        zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
+        ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
+        house_system=request.house_system.value if request.house_system else None,
+        node_type=request.node_type.value if request.node_type else None,
+        key_namespace="transit_timeline",
+    )
+    cached = cache.get(cache_key)
+    if cached:
+        metrics.record_cache_hit()
+        metrics.record_request(timer.elapsed_ms())
+        return TransitTimelineResponse.model_validate_json(cached)
+
+    try:
+        response = service.generate_transit_timeline(request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    cache.set(cache_key, response.model_dump_json())
+    metrics.record_cache_miss()
+    metrics.record_request(timer.elapsed_ms())
+    structured_log.info("Transit timeline generated", events=response.event_count)
+    return response
 
 
 @app.get("/metrics")

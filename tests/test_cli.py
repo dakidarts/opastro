@@ -11,7 +11,9 @@ def _snapshot_fingerprint(text: str) -> str:
     normalized = re.sub(r"opastro\s+\d+\.\d+\.\d+", "opastro <VERSION>", normalized)
     normalized = re.sub(r"•\s+\d+\.\d+\.\d+", "• <VERSION>", normalized)
     normalized = re.sub(r"\b\d+\.\d+\.\d+\b", "<VERSION>", normalized)
-    normalized = "\n".join(line.rstrip() for line in normalized.split("\n")).strip() + "\n"
+    normalized = (
+        "\n".join(line.rstrip() for line in normalized.split("\n")).strip() + "\n"
+    )
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
@@ -35,7 +37,18 @@ def test_catalog_command_lists_core_entities(capsys):
 
 
 def test_horoscope_json_output_mode(capsys):
-    code = main(["horoscope", "--period", "daily", "--sign", "ARIES", "--target-date", "2026-04-03", "--json"])
+    code = main(
+        [
+            "horoscope",
+            "--period",
+            "daily",
+            "--sign",
+            "ARIES",
+            "--target-date",
+            "2026-04-03",
+            "--json",
+        ]
+    )
     out = capsys.readouterr().out
     payload = json.loads(out)
     assert code == 0
@@ -45,7 +58,9 @@ def test_horoscope_json_output_mode(capsys):
 
 
 def test_birth_extras_require_birth_date(capsys):
-    code = main(["horoscope", "--period", "daily", "--sign", "ARIES", "--birth-time", "09:30"])
+    code = main(
+        ["horoscope", "--period", "daily", "--sign", "ARIES", "--birth-time", "09:30"]
+    )
     err = capsys.readouterr().err
     assert code == 2
     assert "Provide --birth-date" in err
@@ -99,7 +114,19 @@ def test_html_export_output(tmp_path, capsys):
 def test_profile_save_list_and_apply_defaults(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("OPASTRO_CONFIG_DIR", str(tmp_path / "cfg"))
 
-    code = main(["profile", "save", "--name", "alpha", "--sign", "ARIES", "--format", "markdown", "--set-active"])
+    code = main(
+        [
+            "profile",
+            "save",
+            "--name",
+            "alpha",
+            "--sign",
+            "ARIES",
+            "--format",
+            "markdown",
+            "--set-active",
+        ]
+    )
     assert code == 0
 
     code = main(["profile", "list"])
@@ -107,7 +134,17 @@ def test_profile_save_list_and_apply_defaults(tmp_path, monkeypatch, capsys):
     assert code == 0
     assert "* alpha" in out
 
-    code = main(["horoscope", "--period", "daily", "--target-date", "2026-04-03", "--format", "json"])
+    code = main(
+        [
+            "horoscope",
+            "--period",
+            "daily",
+            "--target-date",
+            "2026-04-03",
+            "--format",
+            "json",
+        ]
+    )
     out = capsys.readouterr().out
     payload = json.loads(out)
     assert code == 0
@@ -155,7 +192,18 @@ def test_init_interactive_creates_profile(tmp_path, monkeypatch, capsys):
 
 
 def test_command_alias_works_for_horoscope(capsys):
-    code = main(["h", "--period", "daily", "--sign", "ARIES", "--target-date", "2026-04-03", "--json"])
+    code = main(
+        [
+            "h",
+            "--period",
+            "daily",
+            "--sign",
+            "ARIES",
+            "--target-date",
+            "2026-04-03",
+            "--json",
+        ]
+    )
     out = capsys.readouterr().out
     payload = json.loads(out)
     assert code == 0
@@ -285,7 +333,11 @@ def test_analytics_opt_in_tracks_anonymized_events(tmp_path, monkeypatch, capsys
     capsys.readouterr()
 
     analytics_path = tmp_path / "cfg" / "analytics-events.log"
-    lines = [json.loads(line) for line in analytics_path.read_text().splitlines() if line.strip()]
+    lines = [
+        json.loads(line)
+        for line in analytics_path.read_text().splitlines()
+        if line.strip()
+    ]
     assert len(lines) >= 2
     success = lines[-2]
     failure = lines[-1]
@@ -308,7 +360,9 @@ def test_logger_path_uses_opastro_config_dir(tmp_path, monkeypatch, capsys):
     assert str(tmp_path / "cfg") in out
 
 
-def test_logger_captures_runtime_error_with_suggested_fixes(tmp_path, monkeypatch, capsys):
+def test_logger_captures_runtime_error_with_suggested_fixes(
+    tmp_path, monkeypatch, capsys
+):
     monkeypatch.setenv("OPASTRO_CONFIG_DIR", str(tmp_path / "cfg"))
 
     code = main(["horoscope", "--period", "daily", "--birth-time", "09:30"])
@@ -390,6 +444,7 @@ def test_root_help_uses_themed_tables(capsys):
     assert "OPASTRO HELP" in out
     assert "Commands" in out
     assert "init (onboard)" in out
+    assert "render (visuals)" in out
     assert "┌" in out or "+" in out
 
 
@@ -407,7 +462,10 @@ def test_golden_snapshot_welcome_output(monkeypatch, capsys):
     code = main([])
     out = capsys.readouterr().out
     assert code == 0
-    assert _snapshot_fingerprint(out) == "aff82e460f8db11080992f2a1670b17cfc5b2c35ed6b6ac43303ce193c53776f"
+    assert (
+        _snapshot_fingerprint(out)
+        == "aff82e460f8db11080992f2a1670b17cfc5b2c35ed6b6ac43303ce193c53776f"
+    )
 
 
 def test_golden_snapshot_root_help_output(monkeypatch, capsys):
@@ -416,7 +474,10 @@ def test_golden_snapshot_root_help_output(monkeypatch, capsys):
     code = main(["--help"])
     out = capsys.readouterr().out
     assert code == 0
-    assert _snapshot_fingerprint(out) == "eb12f81eb25b3074c65955d6567fe485ed952dec766cb43e96e29b4afbda9603"
+    assert (
+        _snapshot_fingerprint(out)
+        == "eb12f81eb25b3074c65955d6567fe485ed952dec766cb43e96e29b4afbda9603"
+    )
 
 
 def test_golden_snapshot_logger_help_output(monkeypatch, capsys):
@@ -425,7 +486,10 @@ def test_golden_snapshot_logger_help_output(monkeypatch, capsys):
     code = main(["logger", "--help"])
     out = capsys.readouterr().out
     assert code == 0
-    assert _snapshot_fingerprint(out) == "612f76faed9e600f63a56cff4eb6cccf3d7fd0535a2f97a91ad799b994214b83"
+    assert (
+        _snapshot_fingerprint(out)
+        == "612f76faed9e600f63a56cff4eb6cccf3d7fd0535a2f97a91ad799b994214b83"
+    )
 
 
 def test_version_flag_prints_installed_version(capsys):
@@ -437,7 +501,9 @@ def test_version_flag_prints_installed_version(capsys):
 
 def test_init_template_natal_prefills_defaults(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("OPASTRO_CONFIG_DIR", str(tmp_path / "cfg"))
-    monkeypatch.setattr("horoscope_engine.cli._detect_local_timezone", lambda: "Africa/Douala")
+    monkeypatch.setattr(
+        "horoscope_engine.cli._detect_local_timezone", lambda: "Africa/Douala"
+    )
     answers = iter(
         [
             "",  # user_name
@@ -579,8 +645,12 @@ def test_natal_split_png_exports(tmp_path, capsys):
     assert code == 0
     assert "saved output to" in captured.err
     assert (split_dir / "natal-wheel.main.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
-    assert (split_dir / "natal-wheel.legends.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
-    assert (split_dir / "natal-wheel.combined.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert (split_dir / "natal-wheel.legends.png").read_bytes()[
+        :8
+    ] == b"\x89PNG\r\n\x1a\n"
+    assert (split_dir / "natal-wheel.combined.png").read_bytes()[
+        :8
+    ] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_natal_wheel_svg_split_api_response_shape():
@@ -659,7 +729,10 @@ def test_natal_wheel_parts_zip_endpoint_contains_expected_files():
             "timezone": "Africa/Douala",
         }
     }
-    response = client.post("/natal-birthchart/wheel.parts.zip?theme=night&split_layout=stacked", json=payload)
+    response = client.post(
+        "/natal-birthchart/wheel.parts.zip?theme=night&split_layout=stacked",
+        json=payload,
+    )
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/zip")
     archive = zipfile.ZipFile(BytesIO(response.content))

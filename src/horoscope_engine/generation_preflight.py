@@ -70,8 +70,12 @@ def _iter_content_strings(payload: object) -> Iterator[Tuple[str, str]]:
                                 yield location, line
 
 
-def _period_json_files(content_root: Path, period: str, factor_type: Optional[str]) -> Iterable[Path]:
-    period_root = content_root / period if (content_root / period).exists() else content_root
+def _period_json_files(
+    content_root: Path, period: str, factor_type: Optional[str]
+) -> Iterable[Path]:
+    period_root = (
+        content_root / period if (content_root / period).exists() else content_root
+    )
     if factor_type:
         pattern = f"*/*/{factor_type}/*/*/*.json"
     else:
@@ -95,10 +99,14 @@ def validate_period_temporal_tokens(
         resolved_factor_type = f"{period_key}_house_focus"
 
     issues: List[str] = []
-    files = _period_json_files(content_root, period_key, factor_type=resolved_factor_type)
+    files = _period_json_files(
+        content_root, period_key, factor_type=resolved_factor_type
+    )
     if not files:
         scope = resolved_factor_type or f"all {period_key} factors"
-        return [f"{period_key} temporal preflight: no files found for scope '{scope}' under {content_root}"]
+        return [
+            f"{period_key} temporal preflight: no files found for scope '{scope}' under {content_root}"
+        ]
 
     disallowed = {
         label: pattern
@@ -110,7 +118,9 @@ def validate_period_temporal_tokens(
         try:
             payload = json.loads(file_path.read_text())
         except (OSError, json.JSONDecodeError):
-            issues.append(f"{period_key} temporal preflight: unreadable json file {file_path}")
+            issues.append(
+                f"{period_key} temporal preflight: unreadable json file {file_path}"
+            )
             if len(issues) >= max_issues:
                 break
             continue
@@ -197,7 +207,9 @@ def validate_generation_contract(
 
     for factor in factor_values:
         if not factor_pattern.fullmatch(factor):
-            issues.append(f"schema regex missing factor '{factor}' for period '{period_key}'")
+            issues.append(
+                f"schema regex missing factor '{factor}' for period '{period_key}'"
+            )
 
     expected_tip_key = TIP_KEY_BY_PERIOD[period_key]
     if tip_key != expected_tip_key:

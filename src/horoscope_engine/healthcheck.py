@@ -66,7 +66,9 @@ def run_content_coverage_healthcheck(
     periods: Optional[Iterable[Period]] = None,
 ) -> List[str]:
     issues: List[str] = []
-    selected_periods = list(periods) if periods is not None else list(PERIOD_FACTOR_ORDERS.keys())
+    selected_periods = (
+        list(periods) if periods is not None else list(PERIOD_FACTOR_ORDERS.keys())
+    )
 
     for period in selected_periods:
         period_dir = content_root / period.value
@@ -90,21 +92,29 @@ def run_content_coverage_healthcheck(
         try:
             schema_payload = json.loads(schema_file.read_text())
         except (OSError, json.JSONDecodeError):
-            issues.append(f"{period.value}: schema file {schema_file.name} is unreadable")
+            issues.append(
+                f"{period.value}: schema file {schema_file.name} is unreadable"
+            )
             continue
 
         pattern_text = _extract_factor_regex(schema_payload)
         if not pattern_text:
-            issues.append(f"{period.value}: factor regex not found in schema {schema_file.name}")
+            issues.append(
+                f"{period.value}: factor regex not found in schema {schema_file.name}"
+            )
             continue
 
         try:
             pattern = re.compile(pattern_text)
         except re.error:
-            issues.append(f"{period.value}: invalid factor regex in schema {schema_file.name}")
+            issues.append(
+                f"{period.value}: invalid factor regex in schema {schema_file.name}"
+            )
             continue
 
-        schema_misses = sorted([factor for factor in expected if not pattern.fullmatch(factor)])
+        schema_misses = sorted(
+            [factor for factor in expected if not pattern.fullmatch(factor)]
+        )
         if schema_misses:
             issues.append(
                 f"{period.value}: schema regex does not accept factors: {', '.join(schema_misses)}"

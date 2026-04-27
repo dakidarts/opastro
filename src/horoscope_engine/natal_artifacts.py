@@ -13,7 +13,9 @@ SYMBOL_FONT_STACK = (
     "'Apple Symbols','Segoe UI Symbol','Noto Sans Symbols2','Symbola',"
     "'DejaVu Sans','Arial Unicode MS','Helvetica','Arial',sans-serif"
 )
-TEXT_FONT_STACK = "'Menlo','Consolas','SFMono-Regular','DejaVu Sans Mono','Liberation Mono',monospace"
+TEXT_FONT_STACK = (
+    "'Menlo','Consolas','SFMono-Regular','DejaVu Sans Mono','Liberation Mono',monospace"
+)
 
 ZODIAC_SYMBOL_CODEPOINT = {
     "ARIES": 0x2648,
@@ -147,12 +149,16 @@ def _symbol(codepoint: Optional[int], fallback: str = "?") -> str:
         return fallback
 
 
-def _polar_xy(cx: float, cy: float, radius: float, longitude: float) -> tuple[float, float]:
+def _polar_xy(
+    cx: float, cy: float, radius: float, longitude: float
+) -> tuple[float, float]:
     angle = math.radians((longitude % 360.0) - 90.0)
     return (cx + radius * math.cos(angle), cy + radius * math.sin(angle))
 
 
-def _cluster_tangent_offsets(items: list[tuple[str, float]], max_gap: float = 4.5) -> dict[str, float]:
+def _cluster_tangent_offsets(
+    items: list[tuple[str, float]], max_gap: float = 4.5
+) -> dict[str, float]:
     if not items:
         return {}
     sorted_items = sorted(items, key=lambda item: item[1] % 360.0)
@@ -201,7 +207,9 @@ def _house_from_cusps(longitude: float, cusps: list[float]) -> Optional[int]:
     return None
 
 
-def _major_aspect_rows(report: NatalBirthchartResponse, limit: int = 12) -> list[dict[str, Any]]:
+def _major_aspect_rows(
+    report: NatalBirthchartResponse, limit: int = 12
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for aspect in report.snapshot.aspects:
         if aspect.body1 not in PLANET_STYLE or aspect.body2 not in PLANET_STYLE:
@@ -217,7 +225,14 @@ def _major_aspect_rows(report: NatalBirthchartResponse, limit: int = 12) -> list
                 "exact": bool(aspect.exact),
             }
         )
-    rows.sort(key=lambda item: (item["orb"], ASPECT_PRIORITY.get(item["aspect"], 99), item["body1"], item["body2"]))
+    rows.sort(
+        key=lambda item: (
+            item["orb"],
+            ASPECT_PRIORITY.get(item["aspect"], 99),
+            item["body1"],
+            item["body2"],
+        )
+    )
     return rows[:limit]
 
 
@@ -227,7 +242,11 @@ def _sign_polarity(sign: str) -> str:
 
 def _element_percentages(report: NatalBirthchartResponse) -> dict[str, float]:
     premium = report.premium_insights
-    if premium and premium.dominant_signature and premium.dominant_signature.element_balance:
+    if (
+        premium
+        and premium.dominant_signature
+        and premium.dominant_signature.element_balance
+    ):
         base = premium.dominant_signature.element_balance
         return {
             "fire": round(float(base.get("fire", 0.0)) * 100.0, 1),
@@ -251,7 +270,11 @@ def _element_percentages(report: NatalBirthchartResponse) -> dict[str, float]:
         "AQUARIUS": "air",
         "PISCES": "water",
     }
-    positions = [position for position in report.snapshot.positions if position.name in PLANET_STYLE]
+    positions = [
+        position
+        for position in report.snapshot.positions
+        if position.name in PLANET_STYLE
+    ]
     total = float(len(positions) or 1)
     for position in positions:
         element = sign_to_element.get(position.sign)
@@ -418,7 +441,9 @@ def build_natal_wheel_svg(
 
     points: list[str] = []
     point_labels: list[str] = []
-    label_offsets = _cluster_tangent_offsets([(pos.name, pos.longitude) for pos in focus_positions], max_gap=5.0)
+    label_offsets = _cluster_tangent_offsets(
+        [(pos.name, pos.longitude) for pos in focus_positions], max_gap=5.0
+    )
     for position in focus_positions:
         x, y = point_map[position.name]
         color = PLANET_STYLE.get(position.name, "#f8fafc")
@@ -465,7 +490,10 @@ def build_natal_wheel_svg(
         "W": "Whole Sign",
         "E": "Equal",
         "K": "Koch",
-    }.get((report.snapshot.house_system or "").upper(), report.snapshot.house_system or "N/A")
+    }.get(
+        (report.snapshot.house_system or "").upper(),
+        report.snapshot.house_system or "N/A",
+    )
     coords = report.birth.coordinates
     coords_text = (
         f"{coords.latitude:.4f}, {coords.longitude:.4f}"
@@ -487,7 +515,9 @@ def build_natal_wheel_svg(
     metadata_title_y = planet_card_y + 22.0
     metadata_first_line_y = metadata_title_y + 20.0
     metadata_line_h = 15.0
-    metadata_last_line_y = metadata_first_line_y + ((len(metadata_lines) - 1) * metadata_line_h)
+    metadata_last_line_y = metadata_first_line_y + (
+        (len(metadata_lines) - 1) * metadata_line_h
+    )
     metadata_block_h = (metadata_last_line_y - planet_card_y) + 20.0
     planet_header_y = planet_card_y + metadata_block_h + 12.0
     profile_line_count = 5
@@ -503,7 +533,9 @@ def build_natal_wheel_svg(
     aspect_section_h = 52.0 + (len(aspect_visible_rows) * 22.0)
     signs_section_h = 44.0 + (sign_rows * sign_row_h)
     legend_divider_gap = 14.0
-    legend_card_h = 18.0 + aspect_section_h + legend_divider_gap + signs_section_h + 16.0
+    legend_card_h = (
+        18.0 + aspect_section_h + legend_divider_gap + signs_section_h + 16.0
+    )
     wheel_bottom = cy + ring_outer
     right_column_bottom = legend_card_y + legend_card_h
     content_bottom = max(
@@ -532,8 +564,12 @@ def build_natal_wheel_svg(
     )
     for idx, position in enumerate(focus_positions):
         y = planet_header_y + 42 + (idx * planet_row_h)
-        symbol = _symbol(PLANET_SYMBOL_CODEPOINT.get(position.name), position.name[:2].upper())
-        sign_symbol = _symbol(ZODIAC_SYMBOL_CODEPOINT.get(position.sign), position.sign[:2])
+        symbol = _symbol(
+            PLANET_SYMBOL_CODEPOINT.get(position.name), position.name[:2].upper()
+        )
+        sign_symbol = _symbol(
+            ZODIAC_SYMBOL_CODEPOINT.get(position.sign), position.sign[:2]
+        )
         retro = "R" if position.retrograde else "-"
         planet_rows_svg.append(
             f'<text x="{planet_card_x + 18:.2f}" y="{y:.2f}" font-size="15" font-family="{SYMBOL_FONT_STACK}" fill="{PLANET_STYLE.get(position.name)}">{symbol}</text>'
@@ -548,11 +584,15 @@ def build_natal_wheel_svg(
     asc_text = "-"
     if asc:
         asc_degree = _degree_in_sign(asc["longitude"])
-        asc_text = f"{asc['sign']}" + (f" ({asc_degree:.2f}°)" if asc_degree is not None else "")
+        asc_text = f"{asc['sign']}" + (
+            f" ({asc_degree:.2f}°)" if asc_degree is not None else ""
+        )
     mc_text = "-"
     if mc:
         mc_degree = _degree_in_sign(mc["longitude"])
-        mc_text = f"{mc['sign']}" + (f" ({mc_degree:.2f}°)" if mc_degree is not None else "")
+        mc_text = f"{mc['sign']}" + (
+            f" ({mc_degree:.2f}°)" if mc_degree is not None else ""
+        )
     profile_lines = [
         ("Profile", accent_color, 13.5, True),
         (f"Polarity: {sign_polarity.title()}", "#d7e2f4", 12.2, False),
@@ -621,7 +661,7 @@ def build_natal_wheel_svg(
         )
 
     background = (
-        '<defs>'
+        "<defs>"
         '<radialGradient id="wheelBg" cx="30%" cy="18%" r="88%">'
         f'<stop offset="0%" stop-color="{palette["bg_0"]}" />'
         f'<stop offset="55%" stop-color="{palette["bg_1"]}" />'
@@ -641,14 +681,14 @@ def build_natal_wheel_svg(
     <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner:.2f}" fill="none" stroke="{palette["ring_inner"]}" stroke-width="2.3" />
     <circle cx="{cx:.2f}" cy="{cy:.2f}" r="{ring_inner * 0.63:.2f}" fill="{palette["center_fill"]}" stroke="{palette["center_stroke"]}" stroke-width="1.0" opacity="0.95" />
 
-    {''.join(sign_lines)}
-    {''.join(house_lines)}
-    {''.join(sign_labels)}
-    {''.join(house_labels)}
-    {''.join(aspect_lines)}
-    {''.join(points)}
-    {''.join(point_labels)}
-    {''.join(angle_marks)}
+    {"".join(sign_lines)}
+    {"".join(house_lines)}
+    {"".join(sign_labels)}
+    {"".join(house_labels)}
+    {"".join(aspect_lines)}
+    {"".join(points)}
+    {"".join(point_labels)}
+    {"".join(angle_marks)}
 
     <text x="{width * 0.06:.2f}" y="{(top_margin + 18):.2f}" font-size="44" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{display_name}</text>
     <text x="{width * 0.06:.2f}" y="{(top_margin + 44):.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="{palette["subtitle"]}">{wheel_title}</text>
@@ -657,9 +697,9 @@ def build_natal_wheel_svg(
   <g id="legends">
     <rect x="{planet_card_x:.2f}" y="{planet_card_y:.2f}" width="{planet_card_w:.2f}" height="{planet_card_h:.2f}" rx="14" fill="{palette["panel_fill"]}" opacity="{palette["panel_opacity"]:.2f}" />
     <rect x="{legend_card_x:.2f}" y="{legend_card_y:.2f}" width="{legend_card_w:.2f}" height="{legend_card_h:.2f}" rx="14" fill="{palette["panel_fill"]}" opacity="{palette["panel_opacity"]:.2f}" />
-    {''.join(planet_rows_svg)}
-    {''.join(aspect_rows_svg)}
-    {''.join(signs_grid_svg)}
+    {"".join(planet_rows_svg)}
+    {"".join(aspect_rows_svg)}
+    {"".join(signs_grid_svg)}
   </g>
 </svg>
 """
@@ -725,10 +765,15 @@ def build_natal_wheel_svg_split(
         theme=theme,
     )
     width_str = _extract_svg_attr(full_svg, "width") or str(max(760, int(size)))
-    height_str = _extract_svg_attr(full_svg, "height") or str(int(max(760, int(size)) * 1.06))
+    height_str = _extract_svg_attr(full_svg, "height") or str(
+        int(max(760, int(size)) * 1.06)
+    )
     full_width = float(width_str)
     full_height = float(height_str)
-    full_view_box = _extract_svg_attr(full_svg, "viewBox") or f"0 0 {full_width:.2f} {full_height:.2f}"
+    full_view_box = (
+        _extract_svg_attr(full_svg, "viewBox")
+        or f"0 0 {full_width:.2f} {full_height:.2f}"
+    )
     defs_block = _extract_svg_defs(full_svg)
     main_group = _extract_svg_group(full_svg, "main-wheel")
     legends_group = _extract_svg_group(full_svg, "legends")
@@ -760,7 +805,9 @@ def build_natal_wheel_svg_split(
     main_h = full_height
 
     main_view_box = f"{main_x:.2f} {main_y:.2f} {main_w:.2f} {main_h:.2f}"
-    legends_view_box = f"{legends_x:.2f} {legends_y:.2f} {legends_w:.2f} {legends_h:.2f}"
+    legends_view_box = (
+        f"{legends_x:.2f} {legends_y:.2f} {legends_w:.2f} {legends_h:.2f}"
+    )
     main_svg = _compose_svg(
         width=main_w,
         height=main_h,
@@ -830,7 +877,9 @@ def _svg_to_png(svg: str) -> bytes:
     try:
         import cairosvg
     except Exception as exc:
-        raise RuntimeError("PNG rendering requires cairosvg. Install with `pip install cairosvg`.") from exc
+        raise RuntimeError(
+            "PNG rendering requires cairosvg. Install with `pip install cairosvg`."
+        ) from exc
     return cairosvg.svg2png(bytestring=svg.encode("utf-8"), unsafe=True)
 
 
@@ -888,8 +937,15 @@ def build_natal_wheel_png(
     try:
         import cairosvg
     except Exception as exc:
-        raise RuntimeError("PNG rendering requires cairosvg. Install with `pip install cairosvg`.") from exc
-    return cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=width, output_height=height, unsafe=True)
+        raise RuntimeError(
+            "PNG rendering requires cairosvg. Install with `pip install cairosvg`."
+        ) from exc
+    return cairosvg.svg2png(
+        bytestring=svg.encode("utf-8"),
+        output_width=width,
+        output_height=height,
+        unsafe=True,
+    )
 
 
 def build_house_overlay_map(report: NatalBirthchartResponse) -> dict[str, Any]:
@@ -907,7 +963,9 @@ def build_house_overlay_map(report: NatalBirthchartResponse) -> dict[str, Any]:
             arc = (end - start) % 360.0
             occupants = []
             for position in positions:
-                planet_house = position.house or _house_from_cusps(position.longitude, cusps)
+                planet_house = position.house or _house_from_cusps(
+                    position.longitude, cusps
+                )
                 if planet_house == house_no:
                     occupants.append(position.name)
             house_rows.append(
@@ -936,7 +994,9 @@ def build_house_overlay_map(report: NatalBirthchartResponse) -> dict[str, Any]:
                     "midpoint_longitude": None,
                     "arc_degrees": 30.0,
                     "wraps_aries": False,
-                    "occupants": sorted(pos.name for pos in positions if pos.sign == sign),
+                    "occupants": sorted(
+                        pos.name for pos in positions if pos.sign == sign
+                    ),
                 }
             )
 
@@ -987,9 +1047,18 @@ def build_natal_report_pdf(
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.units import mm
-        from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+        from reportlab.platypus import (
+            Image,
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            Table,
+            TableStyle,
+        )
     except Exception as exc:
-        raise RuntimeError("PDF rendering requires reportlab. Install with `pip install reportlab`.") from exc
+        raise RuntimeError(
+            "PDF rendering requires reportlab. Install with `pip install reportlab`."
+        ) from exc
 
     def _color_from_hex(value: str):
         clean = value.strip().lstrip("#")
@@ -1046,13 +1115,18 @@ def build_natal_report_pdf(
     small_style.textColor = colors.HexColor(pdf_palette["small"])
 
     story: list[Any] = [
-        Paragraph(f"{(user_name or report.user_name or brand_title).strip() or brand_title} Natal Birthchart Report", title_style),
+        Paragraph(
+            f"{(user_name or report.user_name or brand_title).strip() or brand_title} Natal Birthchart Report",
+            title_style,
+        ),
         Paragraph(
             f"Birth Date: {report.birth.date.isoformat()} • Sun Sign: {report.sign} • "
             f"Rising Sign: {report.snapshot.rising_sign or 'N/A'}",
             small_style,
         ),
-        Paragraph(f"{brand_url} • Premium narrative upgrade: {premium_url}", small_style),
+        Paragraph(
+            f"{brand_url} • Premium narrative upgrade: {premium_url}", small_style
+        ),
         Spacer(1, 8),
     ]
 
@@ -1080,7 +1154,9 @@ def build_natal_report_pdf(
     asc_text = "-"
     if asc:
         asc_deg = _degree_in_sign(asc["longitude"])
-        asc_text = f"{asc['sign']}" + (f" ({asc_deg:.2f}°)" if asc_deg is not None else "")
+        asc_text = f"{asc['sign']}" + (
+            f" ({asc_deg:.2f}°)" if asc_deg is not None else ""
+        )
     mc_text = "-"
     if mc:
         mc_deg = _degree_in_sign(mc["longitude"])
@@ -1095,19 +1171,43 @@ def build_natal_report_pdf(
             "MC",
             mc_text,
         ],
-        ["Air / Water", f"{element_pct['air']:.1f}% / {element_pct['water']:.1f}%", "Sign", report.sign],
+        [
+            "Air / Water",
+            f"{element_pct['air']:.1f}% / {element_pct['water']:.1f}%",
+            "Sign",
+            report.sign,
+        ],
     ]
     profile_table = Table(profile_rows, colWidths=[30 * mm, 52 * mm, 22 * mm, 64 * mm])
     profile_table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor(pdf_palette["panel_bg"])),
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, -1),
+                    colors.HexColor(pdf_palette["panel_bg"]),
+                ),
                 ("BOX", (0, 0), (-1, -1), 0.35, colors.HexColor(pdf_palette["grid"])),
-                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor(pdf_palette["grid"])),
+                (
+                    "INNERGRID",
+                    (0, 0),
+                    (-1, -1),
+                    0.25,
+                    colors.HexColor(pdf_palette["grid"]),
+                ),
                 ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
                 ("FONTNAME", (2, 0), (2, -1), "Helvetica-Bold"),
                 ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor(pdf_palette["body"])),
-                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor(pdf_palette["panel_bg"]), colors.HexColor(pdf_palette["row_b"])]),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 0),
+                    (-1, -1),
+                    [
+                        colors.HexColor(pdf_palette["panel_bg"]),
+                        colors.HexColor(pdf_palette["row_b"]),
+                    ],
+                ),
             ]
         )
     )
@@ -1115,7 +1215,10 @@ def build_natal_report_pdf(
     story.append(Spacer(1, 8))
 
     planet_rows = [["Sy", "Planet", "Sign", "House", "R"]]
-    for position in sorted([p for p in report.snapshot.positions if p.name in PLANET_STYLE], key=lambda x: x.name):
+    for position in sorted(
+        [p for p in report.snapshot.positions if p.name in PLANET_STYLE],
+        key=lambda x: x.name,
+    ):
         planet_symbol = PLANET_TOKEN.get(position.name, position.name[:2].title())
         planet_rows.append(
             [
@@ -1126,7 +1229,11 @@ def build_natal_report_pdf(
                 "R" if position.retrograde else "-",
             ]
         )
-    planet_table = Table(planet_rows, colWidths=[12 * mm, 40 * mm, 46 * mm, 20 * mm, 16 * mm], repeatRows=1)
+    planet_table = Table(
+        planet_rows,
+        colWidths=[12 * mm, 40 * mm, 46 * mm, 20 * mm, 16 * mm],
+        repeatRows=1,
+    )
     planet_table.setStyle(
         TableStyle(
             [
@@ -1136,10 +1243,18 @@ def build_natal_report_pdf(
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
                 ("ALIGN", (3, 0), (4, -1), "CENTER"),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor(pdf_palette["grid"])),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor(pdf_palette["row_a"]), colors.HexColor(pdf_palette["row_b"])]),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [
+                        colors.HexColor(pdf_palette["row_a"]),
+                        colors.HexColor(pdf_palette["row_b"]),
+                    ],
+                ),
             ]
-            )
         )
+    )
     story.append(Paragraph("Planetary Snapshot", subtitle_style))
     story.append(planet_table)
     story.append(Spacer(1, 10))
@@ -1158,16 +1273,39 @@ def build_natal_report_pdf(
                     f"{row['orb']:.2f}",
                 ]
             )
-        aspect_table = Table(aspect_table_rows, colWidths=[12 * mm, 36 * mm, 82 * mm, 18 * mm], repeatRows=1)
+        aspect_table = Table(
+            aspect_table_rows,
+            colWidths=[12 * mm, 36 * mm, 82 * mm, 18 * mm],
+            repeatRows=1,
+        )
         aspect_table.setStyle(
             TableStyle(
                 [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(pdf_palette["header_bg"])),
+                    (
+                        "BACKGROUND",
+                        (0, 0),
+                        (-1, 0),
+                        colors.HexColor(pdf_palette["header_bg"]),
+                    ),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                     ("ALIGN", (0, 0), (0, -1), "CENTER"),
                     ("ALIGN", (3, 0), (3, -1), "RIGHT"),
-                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor(pdf_palette["grid"])),
-                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor(pdf_palette["row_b"]), colors.HexColor(pdf_palette["row_a"])]),
+                    (
+                        "GRID",
+                        (0, 0),
+                        (-1, -1),
+                        0.25,
+                        colors.HexColor(pdf_palette["grid"]),
+                    ),
+                    (
+                        "ROWBACKGROUNDS",
+                        (0, 1),
+                        (-1, -1),
+                        [
+                            colors.HexColor(pdf_palette["row_b"]),
+                            colors.HexColor(pdf_palette["row_a"]),
+                        ],
+                    ),
                 ]
             )
         )
@@ -1231,14 +1369,35 @@ def build_natal_report_pdf(
                         f"{activation.intensity:.2f}",
                     ]
                 )
-            timing_table = Table(timing_rows, colWidths=[66 * mm, 78 * mm, 18 * mm], repeatRows=1)
+            timing_table = Table(
+                timing_rows, colWidths=[66 * mm, 78 * mm, 18 * mm], repeatRows=1
+            )
             timing_table.setStyle(
                 TableStyle(
                     [
-                        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(pdf_palette["header_bg"])),
+                        (
+                            "BACKGROUND",
+                            (0, 0),
+                            (-1, 0),
+                            colors.HexColor(pdf_palette["header_bg"]),
+                        ),
                         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor(pdf_palette["grid"])),
-                        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor(pdf_palette["row_b"]), colors.HexColor(pdf_palette["row_a"])]),
+                        (
+                            "GRID",
+                            (0, 0),
+                            (-1, -1),
+                            0.25,
+                            colors.HexColor(pdf_palette["grid"]),
+                        ),
+                        (
+                            "ROWBACKGROUNDS",
+                            (0, 1),
+                            (-1, -1),
+                            [
+                                colors.HexColor(pdf_palette["row_b"]),
+                                colors.HexColor(pdf_palette["row_a"]),
+                            ],
+                        ),
                     ]
                 )
             )
@@ -1248,7 +1407,10 @@ def build_natal_report_pdf(
     story.append(Spacer(1, 8))
     story.append(Paragraph("House Overlay Highlights", subtitle_style))
     houses = overlay.get("houses", [])
-    ranked = sorted(houses, key=lambda item: (-len(item.get("occupants", [])), item.get("house", 99)))
+    ranked = sorted(
+        houses,
+        key=lambda item: (-len(item.get("occupants", [])), item.get("house", 99)),
+    )
     house_rows = [["House", "Sign", "Arc", "Occupants"]]
     for item in ranked[:8]:
         house_rows.append(
@@ -1259,14 +1421,29 @@ def build_natal_report_pdf(
                 ", ".join(item.get("occupants", [])[:4]) or "-",
             ]
         )
-    house_table = Table(house_rows, colWidths=[18 * mm, 30 * mm, 24 * mm, 90 * mm], repeatRows=1)
+    house_table = Table(
+        house_rows, colWidths=[18 * mm, 30 * mm, 24 * mm, 90 * mm], repeatRows=1
+    )
     house_table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(pdf_palette["header_bg"])),
+                (
+                    "BACKGROUND",
+                    (0, 0),
+                    (-1, 0),
+                    colors.HexColor(pdf_palette["header_bg"]),
+                ),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor(pdf_palette["grid"])),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.HexColor(pdf_palette["row_b"]), colors.HexColor(pdf_palette["row_a"])]),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [
+                        colors.HexColor(pdf_palette["row_b"]),
+                        colors.HexColor(pdf_palette["row_a"]),
+                    ],
+                ),
             ]
         )
     )
@@ -1286,7 +1463,9 @@ def build_natal_report_pdf(
         canvas.drawString(14 * mm, 7 * mm, f"{brand_title} • {brand_url}")
         canvas.setFillColor(colors.HexColor(pdf_palette["small"]))
         canvas.setFont("Helvetica", 8)
-        canvas.drawRightString(200 * mm, 7 * mm, f"Generated: {date.today().isoformat()}")
+        canvas.drawRightString(
+            200 * mm, 7 * mm, f"Generated: {date.today().isoformat()}"
+        )
         canvas.restoreState()
 
     doc.build(story, onFirstPage=_paint_brand, onLaterPages=_paint_brand)
