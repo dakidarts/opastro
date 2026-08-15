@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import site
+import sysconfig
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -16,6 +17,12 @@ def _default_ephemeris_path() -> Optional[str]:
     local = Path(__file__).resolve().parents[2] / "data" / "ephemeris"
     if local.exists():
         return str(local)
+    package_local = Path(__file__).resolve().parent / "data" / "ephemeris"
+    if package_local.exists():
+        return str(package_local)
+    installed = Path(sysconfig.get_path("data")) / "data" / "ephemeris"
+    if installed.exists():
+        return str(installed)
     # Check user cache for downloaded ephemeris files.
     cache_dir = Path.home() / ".cache" / "opastro" / "ephemeris"
     if cache_dir.exists():

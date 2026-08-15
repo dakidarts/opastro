@@ -10,6 +10,7 @@ Base URL (local): `http://127.0.0.1:8000`
 | `POST` | `/horoscope` | Standard period report |
 | `POST` | `/birthday-horoscope` | Birthday-cycle yearly report |
 | `POST` | `/planet-horoscope` | Planet-focused report |
+| `POST` | `/celestial-events` | Global ephemeris event calendar |
 | `POST` | `/natal-birthchart` | Natal chart snapshot + sign derivation report |
 | `POST` | `/natal-birthchart/wheel.svg` | Render natal wheel as SVG |
 | `POST` | `/natal-birthchart/wheel.png` | Render natal wheel as PNG |
@@ -88,6 +89,26 @@ Notes:
   "sections": ["general", "communication"]
 }
 ```
+
+## `POST /celestial-events`
+
+Returns a global ephemeris event calendar without natal birth data.
+
+### Request body
+
+```json
+{
+  "period": "monthly",
+  "target_date": "2026-04-03",
+  "zodiac_system": "tropical",
+  "node_type": "true"
+}
+```
+
+`period` accepts `daily`, `weekly`, `monthly`, or `yearly` and defaults to
+`monthly`. `target_date` defaults to today. The response includes structured
+events for exact aspects, ingresses, stations, lunations, eclipse windows, and
+retrograde emphasis, plus period metrics and notable event descriptions.
 
 ## `POST /natal-birthchart`
 

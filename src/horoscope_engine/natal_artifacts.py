@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import re
 from datetime import date, datetime
+from html import escape as escape_html
 from io import BytesIO
 from typing import Any, Optional
 
@@ -16,6 +17,11 @@ SYMBOL_FONT_STACK = (
 TEXT_FONT_STACK = (
     "'Menlo','Consolas','SFMono-Regular','DejaVu Sans Mono','Liberation Mono',monospace"
 )
+
+
+def _svg_text(value: Any) -> str:
+    return escape_html(str(value), quote=False)
+
 
 ZODIAC_SYMBOL_CODEPOINT = {
     "ARIES": 0x2648,
@@ -552,7 +558,7 @@ def build_natal_wheel_svg(
     for idx, line in enumerate(metadata_lines):
         y = metadata_first_line_y + (idx * metadata_line_h)
         planet_rows_svg.append(
-            f'<text x="{planet_card_x + 16:.2f}" y="{y:.2f}" font-size="11.6" font-family="{TEXT_FONT_STACK}" fill="#c9d8ef">{line}</text>'
+            f'<text x="{planet_card_x + 16:.2f}" y="{y:.2f}" font-size="11.6" font-family="{TEXT_FONT_STACK}" fill="#c9d8ef">{_svg_text(line)}</text>'
         )
     planet_rows_svg.append(
         f'<text x="{planet_card_x + 16:.2f}" y="{planet_header_y:.2f}" font-size="17" font-family="{TEXT_FONT_STACK}" '
@@ -610,7 +616,7 @@ def build_natal_wheel_svg(
         weight = ' font-weight="700"' if bold else ""
         planet_rows_svg.append(
             f'<text x="{planet_card_x + 16:.2f}" y="{y:.2f}" font-size="{font_size}" font-family="{TEXT_FONT_STACK}" '
-            f'fill="{color}"{weight}>{line}</text>'
+            f'fill="{color}"{weight}>{_svg_text(line)}</text>'
         )
 
     aspect_rows_svg: list[str] = []
@@ -690,8 +696,8 @@ def build_natal_wheel_svg(
     {"".join(point_labels)}
     {"".join(angle_marks)}
 
-    <text x="{width * 0.06:.2f}" y="{(top_margin + 18):.2f}" font-size="44" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{display_name}</text>
-    <text x="{width * 0.06:.2f}" y="{(top_margin + 44):.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="{palette["subtitle"]}">{wheel_title}</text>
+    <text x="{width * 0.06:.2f}" y="{(top_margin + 18):.2f}" font-size="44" font-family="{TEXT_FONT_STACK}" fill="{accent_color}" font-weight="700">{_svg_text(display_name)}</text>
+    <text x="{width * 0.06:.2f}" y="{(top_margin + 44):.2f}" font-size="16" font-family="{TEXT_FONT_STACK}" fill="{palette["subtitle"]}">{_svg_text(wheel_title)}</text>
   </g>
 
   <g id="legends">
@@ -880,7 +886,7 @@ def _svg_to_png(svg: str) -> bytes:
         raise RuntimeError(
             "PNG rendering requires cairosvg. Install with `pip install cairosvg`."
         ) from exc
-    return cairosvg.svg2png(bytestring=svg.encode("utf-8"), unsafe=True)
+    return cairosvg.svg2png(bytestring=svg.encode("utf-8"), unsafe=False)
 
 
 def build_natal_wheel_png_split(
@@ -1074,7 +1080,7 @@ def build_natal_report_pdf(
         rightMargin=14 * mm,
         topMargin=12 * mm,
         bottomMargin=12 * mm,
-        title=f"{brand_title} Natal Birthchart Report",
+        title=f"{_svg_text(brand_title)} Natal Birthchart Report",
     )
     styles = getSampleStyleSheet()
     accent = _color_from_hex(accent_color)
@@ -1116,7 +1122,7 @@ def build_natal_report_pdf(
 
     story: list[Any] = [
         Paragraph(
-            f"{(user_name or report.user_name or brand_title).strip() or brand_title} Natal Birthchart Report",
+            f"{_svg_text((user_name or report.user_name or brand_title).strip() or brand_title)} Natal Birthchart Report",
             title_style,
         ),
         Paragraph(
@@ -1125,7 +1131,8 @@ def build_natal_report_pdf(
             small_style,
         ),
         Paragraph(
-            f"{brand_url} • Premium narrative upgrade: {premium_url}", small_style
+            f"{_svg_text(brand_url)} • Premium narrative upgrade: {_svg_text(premium_url)}",
+            small_style,
         ),
         Spacer(1, 8),
     ]

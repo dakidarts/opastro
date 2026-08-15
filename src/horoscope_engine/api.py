@@ -7,17 +7,21 @@ import logging
 import os
 from pathlib import Path
 import zipfile
+from secrets import compare_digest
 
 from fastapi import FastAPI, HTTPException, Header, Query, Request
 from fastapi.responses import Response, JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from .cache import cache_from_env
-from .cache_keys import build_cache_key
+from .cache_keys import build_cache_key, build_model_cache_key
 from .config import ServiceConfig
 from .healthcheck import run_content_coverage_healthcheck
 from .middleware import ApiKeyMiddleware, RateLimitMiddleware
 from .models import (
     BirthdayHoroscopeRequest,
+    CelestialEventsRequest,
+    CelestialEventsResponse,
     HoroscopeRequest,
     HoroscopeResponse,
     NatalBirthchartRequest,
@@ -275,6 +279,42 @@ async def get_planet_horoscope(
     return response
 
 
+@app.post(
+    "/celestial-events",
+    response_model=CelestialEventsResponse,
+    tags=["Ephemeris"],
+)
+async def get_celestial_events(
+    request: CelestialEventsRequest,
+    x_tenant_id: str | None = Header(default=None, alias="X-Tenant-Id"),
+) -> CelestialEventsResponse:
+    timer = Timer()
+    tenant = request.tenant_id or x_tenant_id
+    cache_key = build_model_cache_key(
+        model=request, tenant_id=tenant, key_namespace="celestial_events"
+    )
+    cached = cache.get(cache_key)
+    if cached:
+        metrics.record_cache_hit()
+        metrics.record_request(timer.elapsed_ms())
+        return CelestialEventsResponse.model_validate_json(cached)
+
+    try:
+        response = await run_in_threadpool(service.generate_celestial_events, request)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    cache.set(cache_key, response.model_dump_json())
+    metrics.record_cache_miss()
+    metrics.record_request(timer.elapsed_ms())
+    structured_log.info(
+        "Celestial events generated",
+        period=response.period.value,
+        event_count=len(response.events),
+    )
+    return response
+
+
 @app.post("/natal-birthchart", response_model=NatalBirthchartResponse, tags=["Natal"])
 @app.post(
     "/natal-birthchart-report", response_model=NatalBirthchartResponse, tags=["Natal"]
@@ -486,28 +526,8 @@ async def get_synastry(
 ) -> SynastryResponse:
     timer = Timer()
     tenant = request.tenant_id or x_tenant_id
-    cache_key = build_cache_key(
-        tenant_id=tenant,
-        period=Period.YEARLY,
-        sign=None,
-        sign_source="synastry",
-        sections=None,
-        target_date=None,
-        birth_date=request.birth1.date.isoformat(),
-        birth_time=request.birth1.time,
-        birth_latitude=request.birth1.coordinates.latitude
-        if request.birth1.coordinates
-        else None,
-        birth_longitude=request.birth1.coordinates.longitude
-        if request.birth1.coordinates
-        else None,
-        birth_timezone=request.birth1.timezone,
-        zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
-        ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
-        house_system=request.house_system.value if request.house_system else None,
-        node_type=request.node_type.value if request.node_type else None,
-        user_name=f"{request.user_name1 or 'a'}_{request.user_name2 or 'b'}",
-        key_namespace="synastry",
+    cache_key = build_model_cache_key(
+        model=request, tenant_id=tenant, key_namespace="synastry"
     )
     cached = cache.get(cache_key)
     if cached:
@@ -538,27 +558,8 @@ async def get_transit_timeline(
 ) -> TransitTimelineResponse:
     timer = Timer()
     tenant = request.tenant_id or x_tenant_id
-    cache_key = build_cache_key(
-        tenant_id=tenant,
-        period=Period.DAILY,
-        sign=None,
-        sign_source="transits",
-        sections=None,
-        target_date=request.date_from,
-        birth_date=request.birth.date.isoformat(),
-        birth_time=request.birth.time,
-        birth_latitude=request.birth.coordinates.latitude
-        if request.birth.coordinates
-        else None,
-        birth_longitude=request.birth.coordinates.longitude
-        if request.birth.coordinates
-        else None,
-        birth_timezone=request.birth.timezone,
-        zodiac_system=request.zodiac_system.value if request.zodiac_system else None,
-        ayanamsa=request.ayanamsa.value if request.ayanamsa else None,
-        house_system=request.house_system.value if request.house_system else None,
-        node_type=request.node_type.value if request.node_type else None,
-        key_namespace="transit_timeline",
+    cache_key = build_model_cache_key(
+        model=request, tenant_id=tenant, key_namespace="transit_timeline"
     )
     cached = cache.get(cache_key)
     if cached:
@@ -567,7 +568,7 @@ async def get_transit_timeline(
         return TransitTimelineResponse.model_validate_json(cached)
 
     try:
-        response = service.generate_transit_timeline(request)
+        response = await run_in_threadpool(service.generate_transit_timeline, request)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -595,7 +596,12 @@ async def admin_pregenerate(
     x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
 ) -> dict:
     expected = os.getenv("PREGEN_TOKEN")
-    if expected and x_admin_token != expected:
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin pregeneration is not configured.",
+        )
+    if not x_admin_token or not compare_digest(x_admin_token, expected):
         raise HTTPException(status_code=403, detail="Invalid admin token")
 
     total = pregenerate(

@@ -89,7 +89,13 @@ Natal asset rendering is deterministic and code-defined:
 
 The `planetary-scene` rendering module (`opastro render planetary-scene`) maps astronomical coordinates into a highly-stylised, faux-3D visual map:
 - **Perspective Canvas**: Uses an angled radial grid and tilted orbit rings to emulate 3D depth without requiring WebGL.
-- **Dynamic Elements**: Procedurally generates star fields, subtle nebulas, and orbit lines.
+- **Ephemeris Geometry**: Uses Swiss Ephemeris ecliptic longitude, latitude, and geocentric distance. Distance is encoded with logarithmic visual bands so close and distant bodies remain legible; it is not a heliocentric semimajor-axis claim.
+- **Catalog Sky**: Projects the bundled J2000/ICRS constellation catalog into the current ecliptic frame with precession, constellation line figures, labels, and magnitude-scaled stars.
+- **Dynamic Elements**: Procedurally generates a date-seeded star field, subtle Milky Way/nebulas, and restrained SVG opacity animation for natural-looking twinkle.
+- **Body Markers**: Renders distinct SVG illustrations for the Sun, Earth, Moon, planets, dwarf planets, asteroids, and lunar nodes instead of generic dots. All markers, including Earth's continents and Saturn's layered rings, are native SVG geometry with no raster image dependencies.
+- **Earth Context**: Adds Earth to the scene from the inverse geocentric Sun vector while keeping the public chart snapshot geocentric and unchanged.
+- **Context Layer**: Adds a 12-sector tropical zodiac band with five-degree ticks and instantaneous direct/retrograde speed trails derived from each body's ephemeris speed. Both layers can be disabled with `--no-zodiac-band` and `--no-motion`.
+- **Export Metadata**: Body markers expose longitude, latitude, distance, speed, retrograde state, and accessible titles in SVG. Animated layers honor `prefers-reduced-motion`.
 - **Configurable Aesthetics**: Supports multiple visual themes (`dark`, `neon-blue`, `observatory`, `gold-premium`) and `top-down` vs `perspective` projections.
 - **Data Footer**: Includes a minimalist, auto-resizing grid displaying real-time planetary positions, retrogrades, and exact aspects.
 - **Output Formats**: Renders to `svg` or `png` with support for optional `--transparent` backgrounds while preserving core styling.

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 import json
 import os
+from pathlib import Path
 import sqlite3
 import threading
 from typing import Any, Dict, Optional, Protocol
@@ -48,19 +49,35 @@ class TTLCache:
 
 
 class RedisCache:
-    def __init__(self, url: str, prefix: str = "") -> None:
+    def __init__(
+        self,
+        url: str,
+        prefix: str = "",
+        fallback: Optional[CacheProvider] = None,
+    ) -> None:
         self.client = redis.from_url(url, decode_responses=True)
         self.prefix = prefix
+        self.fallback = fallback
 
     def get(self, key: str) -> Optional[Any]:
-        raw = self.client.get(f"{self.prefix}{key}")
+        try:
+            raw = self.client.get(f"{self.prefix}{key}")
+        except redis.RedisError:
+            if self.fallback is None:
+                raise
+            return self.fallback.get(key)
         if raw is None:
             return None
         return raw
 
     def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
         ttl = ttl_seconds or 3600
-        self.client.setex(f"{self.prefix}{key}", ttl, value)
+        try:
+            self.client.setex(f"{self.prefix}{key}", ttl, value)
+        except redis.RedisError:
+            if self.fallback is None:
+                raise
+            self.fallback.set(key, value, ttl_seconds=ttl_seconds)
 
 
 class SQLiteCache:
@@ -78,10 +95,24 @@ class SQLiteCache:
         self.path = path
         self.ttl = ttl_seconds
         self._lock = threading.Lock()
+        self._memory_connection: sqlite3.Connection | None = None
+        self._memory_fallback = TTLCache(ttl_seconds)
+        self._read_only = False
+        if path == ":memory:":
+            self._memory_connection = sqlite3.connect(path, check_same_thread=False)
+        else:
+            expanded_path = Path(path).expanduser()
+            expanded_path.parent.mkdir(parents=True, exist_ok=True)
+            self.path = str(expanded_path)
         self._ensure_schema()
 
+    def _connect(self) -> sqlite3.Connection:
+        if self._memory_connection is not None:
+            return self._memory_connection
+        return sqlite3.connect(self.path)
+
     def _ensure_schema(self) -> None:
-        with sqlite3.connect(self.path) as conn:
+        with self._connect() as conn:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS cache (
@@ -99,51 +130,84 @@ class SQLiteCache:
     def _now(self) -> float:
         return datetime.utcnow().timestamp()
 
+    @staticmethod
+    def _is_read_only_error(exc: sqlite3.OperationalError) -> bool:
+        message = str(exc).lower()
+        return "readonly" in message or "read-only" in message
+
+    def _use_memory_fallback(self) -> None:
+        self._read_only = True
+
     def get(self, key: str) -> Optional[Any]:
+        if self._read_only:
+            return self._memory_fallback.get(key)
         with self._lock:
-            with sqlite3.connect(self.path) as conn:
-                cursor = conn.execute(
-                    "SELECT value, expires_at FROM cache WHERE key = ?",
-                    (key,),
-                )
-                row = cursor.fetchone()
-                if row is None:
-                    return None
-                value, expires_at = row
-                if self._now() >= expires_at:
-                    conn.execute("DELETE FROM cache WHERE key = ?", (key,))
-                    conn.commit()
-                    return None
-            return value
+            try:
+                with self._connect() as conn:
+                    cursor = conn.execute(
+                        "SELECT value, expires_at FROM cache WHERE key = ?",
+                        (key,),
+                    )
+                    row = cursor.fetchone()
+                    if row is None:
+                        return None
+                    value, expires_at = row
+                    if self._now() >= expires_at:
+                        conn.execute("DELETE FROM cache WHERE key = ?", (key,))
+                        conn.commit()
+                        return None
+                return value
+            except sqlite3.OperationalError as exc:
+                if not self._is_read_only_error(exc):
+                    raise
+                self._use_memory_fallback()
+                return self._memory_fallback.get(key)
 
     def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
+        if self._read_only:
+            self._memory_fallback.set(key, value, ttl_seconds=ttl_seconds)
+            return
         ttl = ttl_seconds or self.ttl
         expires_at = self._now() + ttl
         raw = json.dumps(value) if not isinstance(value, str) else value
         with self._lock:
-            with sqlite3.connect(self.path) as conn:
-                conn.execute(
-                    """
-                    INSERT INTO cache(key, value, expires_at)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(key) DO UPDATE SET
-                        value = excluded.value,
-                        expires_at = excluded.expires_at
-                    """,
-                    (key, raw, expires_at),
-                )
-                conn.commit()
+            try:
+                with self._connect() as conn:
+                    conn.execute(
+                        """
+                        INSERT INTO cache(key, value, expires_at)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(key) DO UPDATE SET
+                            value = excluded.value,
+                            expires_at = excluded.expires_at
+                        """,
+                        (key, raw, expires_at),
+                    )
+                    conn.commit()
+            except sqlite3.OperationalError as exc:
+                if not self._is_read_only_error(exc):
+                    raise
+                self._use_memory_fallback()
+                self._memory_fallback.set(key, value, ttl_seconds=ttl_seconds)
 
     def evict_expired(self) -> int:
         """Manually purge expired entries. Returns number of rows removed."""
+        if self._read_only:
+            return 0
         with self._lock:
-            with sqlite3.connect(self.path) as conn:
-                cursor = conn.execute(
-                    "DELETE FROM cache WHERE expires_at <= ?",
-                    (self._now(),),
-                )
-                conn.commit()
-                return cursor.rowcount
+            try:
+                with self._connect() as conn:
+                    cursor = conn.execute(
+                        "DELETE FROM cache WHERE expires_at <= ?",
+                        (self._now(),),
+                    )
+                    conn.commit()
+                    return cursor.rowcount
+            except sqlite3.OperationalError as exc:
+                if not self._is_read_only_error(exc):
+                    raise
+                self._use_memory_fallback()
+                return 0
 
 
 def _default_sqlite_path() -> str:
@@ -159,9 +223,9 @@ def _default_sqlite_path() -> str:
 def cache_from_env(default_ttl: int) -> CacheProvider:
     url = os.getenv("REDIS_URL")
     prefix = os.getenv("REDIS_KEY_PREFIX", "")
-    if url:
-        return RedisCache(url, prefix=prefix)
-    # Prefer SQLite over in-memory TTLCache for persistence across restarts.
     cache_path = _default_sqlite_path()
-    os.makedirs(os.path.dirname(cache_path), exist_ok=True)
-    return SQLiteCache(path=cache_path, ttl_seconds=default_ttl)
+    sqlite_cache = SQLiteCache(path=cache_path, ttl_seconds=default_ttl)
+    if url:
+        return RedisCache(url, prefix=prefix, fallback=sqlite_cache)
+    # Prefer SQLite over in-memory TTLCache for persistence across restarts.
+    return sqlite_cache

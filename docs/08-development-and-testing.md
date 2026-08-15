@@ -12,23 +12,15 @@ source .venv/bin/activate
 python3 -m pip install -e ".[dev]"
 ```
 
-## Pre-commit Hooks
+## Formatting and Linting
 
-This repo uses `pre-commit` to enforce style and catch common issues before they reach CI.
+Ruff is installed by the `dev` extra and is the source of truth for local style
+and CI checks.
 
 ```bash
-# Install the git hook scripts
-pre-commit install
-
-# Run against all files manually
-pre-commit run --all-files
+python -m ruff check .
+python -m ruff format --check .
 ```
-
-Configured hooks:
-- `trailing-whitespace`, `end-of-file-fixer`
-- `check-yaml`, `check-json`, `check-toml`
-- `ruff` lint + auto-fix
-- `ruff-format`
 
 ## Run Tests
 
@@ -62,6 +54,7 @@ opastro profile list
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03 --json
 opastro horoscope --period daily --sign ARIES --format markdown --export /tmp/aries.md
+opastro events --period monthly --target-date 2026-04-03 --format ics --export /tmp/celestial-events.ics
 opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-04-03 --json
 opastro completion --shell bash
 opastro ui --period daily --sign ARIES --target-date 2026-04-03 --no-interactive
@@ -95,23 +88,27 @@ curl -X POST http://127.0.0.1:8000/synastry \
 curl -X POST http://127.0.0.1:8000/natal-birthchart/transits \
   -H "Content-Type: application/json" \
   -d '{"birth":{"date":"1992-06-15","time":"09:30","coordinates":{"latitude":4.0511,"longitude":9.7679},"timezone":"Africa/Douala"},"date_from":"2026-05-01","date_to":"2026-05-31"}'
+
+# Global celestial event calendar
+curl -X POST http://127.0.0.1:8000/celestial-events \
+  -H "Content-Type: application/json" \
+  -d '{"period":"monthly","target_date":"2026-04-03"}'
 ```
 
-## Docker Dev Run
+## Container Development
 
-```bash
-docker compose up --build
-```
-
-Services:
-- API on `http://localhost:8000` with hot reload
-- Redis on `localhost:6379` (optional, set `REDIS_URL=redis://localhost:6379/0`)
+Container manifests are not currently shipped in this open-core tree. Run the
+API locally with the command above, or use [13-docker-deployment.md](13-docker-deployment.md)
+as the deployment blueprint when providing a project-specific image.
 
 ## Packaging Sanity
 
 ```bash
 python3 -m pip install -e .
 opastro --help
+python3 -m build
+python3 -m twine check dist/*
+python3 -m pip_audit --local
 ```
 
 ## CI / GitHub Actions
@@ -119,12 +116,12 @@ opastro --help
 The CI workflow (`.github/workflows/ci.yml`) runs on every push/PR to `main`:
 
 1. **Lint job** (Python 3.12)
-   - `ruff check .`
-   - `ruff format --check .`
+   - `python -m ruff check .`
+   - `python -m ruff format --check .`
 
 2. **Test matrix** (Python 3.11 and 3.12)
    - Install with `pip install -e ".[dev]"`
-   - `PYTHONPATH=src pytest -q`
+   - `python -m pytest -q -p no:cacheprovider`
 
 ## Release CI
 
@@ -133,6 +130,7 @@ GitHub release automation runs on tag pushes matching `v*`:
 - runs full tests
 - builds wheel + sdist
 - runs `twine check`
+- verifies bundled Swiss Ephemeris files and imports the installed wheel
 - uploads built artifacts to workflow and GitHub release
 
 ## Contribution Guardrails
@@ -142,4 +140,4 @@ GitHub release automation runs on tag pushes matching `v*`:
 - Keep section-level voice separation intact.
 - Keep longform cadence behavior deterministic.
 - Add/adjust tests whenever changing factor logic or rendering cadence.
-- Run `ruff check . && ruff format .` before committing.
+- Run `python -m ruff check . && python -m ruff format --check .` before committing.

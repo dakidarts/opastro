@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from dataclasses import dataclass
 from time import perf_counter
 import json
@@ -71,7 +72,9 @@ class StructuredLogger:
 
     def __init__(self, name: str) -> None:
         self._logger = logging.getLogger(name)
-        self._context = threading.local()
+        self._context: ContextVar[tuple[Optional[str], Optional[str]]] = ContextVar(
+            f"{name}.request_context", default=(None, None)
+        )
 
     def _emit(self, level: int, message: str, **kwargs: Any) -> None:
         record: Dict[str, Any] = {
@@ -79,10 +82,9 @@ class StructuredLogger:
             "level": logging.getLevelName(level),
             "timestamp": perf_counter(),
         }
-        request_id = getattr(self._context, "request_id", None)
+        request_id, tenant_id = self._context.get()
         if request_id:
             record["request_id"] = request_id
-        tenant_id = getattr(self._context, "tenant_id", None)
         if tenant_id:
             record["tenant_id"] = tenant_id
         record.update(kwargs)
@@ -91,12 +93,10 @@ class StructuredLogger:
     def set_context(
         self, *, request_id: Optional[str] = None, tenant_id: Optional[str] = None
     ) -> None:
-        self._context.request_id = request_id
-        self._context.tenant_id = tenant_id
+        self._context.set((request_id, tenant_id))
 
     def clear_context(self) -> None:
-        self._context.request_id = None
-        self._context.tenant_id = None
+        self._context.set((None, None))
 
     def debug(self, message: str, **kwargs: Any) -> None:
         self._emit(logging.DEBUG, message, **kwargs)

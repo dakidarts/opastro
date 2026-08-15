@@ -62,6 +62,7 @@ Then continue with [01-quickstart.md](./01-quickstart.md) for the full command t
 2. [02-api-reference.md](./02-api-reference.md)
 3. [03-request-response-contract.md](./03-request-response-contract.md)
 4. [08-development-and-testing.md](./08-development-and-testing.md)
+5. [tasks/v018-release-tracker.md](./tasks/v018-release-tracker.md)
 
 ## Core System Docs
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from secrets import compare_digest
 import time
 from typing import Optional
 
@@ -86,16 +87,32 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
         raw = os.getenv("OPASTRO_API_KEYS", "")
         self._valid_keys = {k.strip() for k in raw.split(",") if k.strip()}
         self._required = os.getenv("OPASTRO_REQUIRE_API_KEY", "0") == "1"
+        self._misconfigured = self._required and not self._valid_keys
 
     async def dispatch(self, request: Request, call_next):
-        if not self._required or not self._valid_keys:
+        if not self._required:
             return await call_next(request)
         # Allow health/metrics unauthenticated
         if request.url.path in {"/health", "/metrics"}:
             return await call_next(request)
 
+        if self._misconfigured:
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "error": {
+                        "type": "authentication_misconfigured",
+                        "message": "API key authentication is enabled but no keys are configured.",
+                    }
+                },
+            )
+
         api_key = request.headers.get("X-API-Key") or request.headers.get("x-api-key")
-        if not api_key or api_key not in self._valid_keys:
+        valid = api_key and any(
+            compare_digest(api_key, configured_key)
+            for configured_key in self._valid_keys
+        )
+        if not valid:
             return JSONResponse(
                 status_code=401,
                 content={

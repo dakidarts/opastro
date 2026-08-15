@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Optional, Sequence
+import hashlib
+import json
+from typing import Any, Optional, Sequence
 
 from .models import Period
 
@@ -87,3 +89,23 @@ def build_cache_key(
         f"{zodiac_system or 'default'}:{ayanamsa or 'default'}:{house_system or 'default'}:{node_type or 'default'}:"
         f"{(user_name or 'none').strip() or 'none'}{extras}"
     ).lower()
+
+
+def build_model_cache_key(
+    *, model: Any, tenant_id: Optional[str], key_namespace: str
+) -> str:
+    """Build a collision-resistant key from a complete Pydantic request model."""
+    if not hasattr(model, "model_dump"):
+        raise TypeError("model must provide model_dump()")
+
+    payload = model.model_dump(mode="json", exclude={"tenant_id"})
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=True,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    request_digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    tenant_value = (tenant_id or "public").strip() or "public"
+    tenant_digest = hashlib.sha256(tenant_value.encode("utf-8")).hexdigest()[:16]
+    return f"{key_namespace}:v2:{tenant_digest}:{request_digest}"

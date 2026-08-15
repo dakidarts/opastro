@@ -82,10 +82,11 @@ Architecture graphic:
 │                      FastAPI Application Layer                          │
 │  ┌─────────────────────────────────────────────────────────────────┐    │
 │  │  Endpoints: /health, /horoscope, /birthday-horoscope,           │    │
-│  │             /planet-horoscope, /house-horoscope,                │    │
-│  │             /planet-house-horoscope, /aspect-horoscope,         │    │
-│  │             /transit-horoscope, /natal-birthchart,              │    │
-│  │             /natal-birthchart/svg, /metrics, /admin/pregenerate │    │
+│  │             /planet-horoscope, /natal-birthchart,              │    │
+│  │             /natal-birthchart/wheel.svg|wheel.png,             │    │
+│  │             /natal-birthchart/report.pdf, /synastry,            │    │
+│  │             /natal-birthchart/transits, /metrics,               │    │
+│  │             /admin/pregenerate                                  │    │
 │  │  • Request validation (Pydantic)                                │    │
 │  │  • Error handling & mapping                                     │    │
 │  │  • Cache lookup & storage                                       │    │
@@ -182,6 +183,7 @@ opastro
 | `opastro horoscope` | Generate standard reports (daily/weekly/monthly/yearly) |
 | `opastro birthday` | Generate birthday-cycle yearly report |
 | `opastro planet` | Generate planet-focused report |
+| `opastro events` | Generate a global celestial event calendar (text/JSON/iCalendar) |
 | `opastro natal` | Generate natal report + wheel chart assets (SVG/PNG/map/PDF) |
 | `opastro explain` | Show why each section line appeared (factor provenance) |
 | `opastro completion --shell ...` | Generate shell completion scripts |
@@ -192,6 +194,14 @@ opastro
 
 Global flags:
 - `opastro -v` / `opastro --version` prints installed/source version.
+- `opastro --force-update-check <command>` bypasses the local release-check cache.
+- `opastro --no-update-check <command>` disables the release check for one invocation.
+
+Interactive terminal invocations perform a cached best-effort check against the
+repository's latest GitHub release tag. New-version notices are shown in the
+welcome/TUI surfaces and on stderr for regular CLI commands, keeping JSON and
+other machine-readable stdout clean. Set `OPASTRO_UPDATE_CHECK=0` to disable
+checks globally.
 
 ### Report Flags
 
@@ -238,7 +248,13 @@ opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-
 
 # Interactive TUI
 opastro ui --period daily --sign ARIES --target-date 2026-04-03
-# keys: ↑↓/j,k section • enter factor mode • pgup/pgdn scroll • g/G jump • q quit
+# keys: ↑↓/j,k section • 1-4 period • / filter • d density • enter factor mode • pgup/pgdn scroll • g/G jump • h/? help • q quit
+# static/export mode: opastro ui --period daily --sign ARIES --json
+# limited terminals: opastro ui --period daily --sign ARIES --ascii
+# alternate report modes:
+opastro ui --kind birthday --sign ARIES --target-date 2026-04-03
+opastro ui --kind planet --planet mars --period daily --sign ARIES --target-date 2026-04-03
+opastro ui --kind events --period monthly --target-date 2026-04-03
 
 # Runtime error logs with suggested fixes
 opastro logger show --limit 5
@@ -266,6 +282,10 @@ opastro birthday --sign TAURUS --target-date 2026-04-03
 
 # Planet-focused monthly report
 opastro planet --period monthly --planet mercury --sign TAURUS --target-date 2026-04-03
+
+# Global celestial event calendar
+opastro events --period monthly --target-date 2026-04-03
+opastro events --period monthly --target-date 2026-04-03 --format ics --export reports/celestial-events.ics
 
 # Natal report + premium artifact exports
 opastro natal \
@@ -321,9 +341,12 @@ opastro render planetary-scene \
 
 ### Rendered Scene Example (April 20, 2026)
 
-![OpAstro Planetary Scene (April 20, 2026)](https://res.cloudinary.com/ds64xs2lp/image/upload/v1776666905/planetary_scene_n9kxuq.svg)
+![OpAstro Planetary Scene (April 20, 2026)](images/planetary-scene.png)
 
 Notes:
+- Planetary scenes use Swiss Ephemeris longitude/latitude and geocentric distance, a bundled precessed constellation catalog, deterministic date-seeded stars, and graphical SVG body markers. Distance bands are logarithmic for readability and are not heliocentric orbital-scale claims.
+- Earth is included as a scene-only inverse-Sun-vector body, and all planet icons are native SVG vectors for resolution-independent exports.
+- Phase 2 adds a tropical zodiac reference band and instantaneous direct/retrograde motion trails; use `--no-zodiac-band` or `--no-motion` for a quieter composition.
 - If `--user-name` is omitted, natal personalization falls back to active profile name; if none exists, it falls back to `OPASTRO`.
 - Wheel assets include a profile context block (name, birth timestamp, coordinates, timezone, house system, zodiac system, generation timestamp) and a responsive combined symbols legend.
 

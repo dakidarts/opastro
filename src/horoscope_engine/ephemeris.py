@@ -43,9 +43,8 @@ MAJOR_BODIES = [
 ]
 
 
-# Candidate minor bodies.  We probe each one at import time and keep only
-# those whose ephemeris data is available.  This avoids noisy RuntimeWarning
-# spew for users who haven't downloaded the optional ``seas_18.se1`` file.
+# Candidate minor bodies. Availability is resolved again after the configured
+# ephemeris path is applied by ``EphemerisEngine``.
 _MINOR_BODY_CANDIDATES: list[BodySpec] = [
     BodySpec("Chiron", swe.CHIRON, "minor"),
     BodySpec("Ceres", swe.CERES, "asteroid"),
@@ -83,13 +82,17 @@ def _probe_minor_body(body: BodySpec) -> bool:
 
 
 # Build the runtime list of minor bodies once at import time.
-MINOR_BODIES: list[BodySpec] = []
-for _body in _MINOR_BODY_CANDIDATES:
-    if _body.name in ("North Node", "South Node"):
-        MINOR_BODIES.append(_body)
-        continue
-    if _probe_minor_body(_body):
-        MINOR_BODIES.append(_body)
+def _available_minor_bodies() -> list[BodySpec]:
+    available: list[BodySpec] = []
+    for body in _MINOR_BODY_CANDIDATES:
+        if body.name in ("North Node", "South Node") or _probe_minor_body(body):
+            available.append(body)
+    return available
+
+
+# Preserve the public catalog constant for callers that inspect the default
+# runtime, while each engine also resolves availability after configuration.
+MINOR_BODIES: list[BodySpec] = _available_minor_bodies()
 
 
 ASPECTS = {
@@ -122,8 +125,10 @@ FIXED_STARS = [
 class EphemerisEngine:
     def __init__(self, config: EphemerisConfig):
         self.config = config
-        if config.ephemeris_path:
-            swe.set_ephe_path(config.ephemeris_path)
+        with SWE_LOCK:
+            if config.ephemeris_path:
+                swe.set_ephe_path(config.ephemeris_path)
+            self.minor_bodies = _available_minor_bodies()
         self._node_id = swe.TRUE_NODE if config.node_type == "true" else swe.MEAN_NODE
 
     def datetime_to_julian(self, dt: datetime) -> float:
@@ -165,7 +170,7 @@ class EphemerisEngine:
 
     def _calc_body(
         self, body: BodySpec, jd: float, flags: int
-    ) -> Tuple[float, float, float]:
+    ) -> Tuple[float, float, float, float]:
         if body.swe_id is None:
             raise ValueError("Body requires derived longitude")
         try:
@@ -177,8 +182,9 @@ class EphemerisEngine:
             )
         longitude = result[0]
         latitude = result[1]
+        distance_au = result[2]
         speed = result[3]
-        return longitude, latitude, speed
+        return longitude, latitude, speed, distance_au
 
     def _house_from_cusps(
         self, longitude: float, cusps: Sequence[float]
@@ -206,12 +212,12 @@ class EphemerisEngine:
         tropical_flags = self._flags(sidereal=False)
         sidereal_flags = self._flags(sidereal=True)
 
-        for body in MAJOR_BODIES + MINOR_BODIES:
+        for body in MAJOR_BODIES + self.minor_bodies:
             if body.name in ("North Node", "South Node"):
-                lon_t, _, _ = self._calc_body(
+                lon_t, _, _, _ = self._calc_body(
                     BodySpec("North Node", self._node_id, "node"), jd, tropical_flags
                 )
-                lon_s, lat_s, speed_s = self._calc_body(
+                lon_s, lat_s, speed_s, distance_s = self._calc_body(
                     BodySpec("North Node", self._node_id, "node"), jd, sidereal_flags
                 )
                 if body.name == "South Node":
@@ -234,14 +240,17 @@ class EphemerisEngine:
                     degree_in_sign=active_degree,
                     retrograde=speed_s < 0,
                     ayanamsa_value=ayanamsa_value,
+                    distance_au=round(float(distance_s), 9),
                 )
                 continue
             if body.swe_id is None:
                 continue
 
             try:
-                lon_t, _, _ = self._calc_body(body, jd, tropical_flags)
-                lon_s, lat_s, speed_s = self._calc_body(body, jd, sidereal_flags)
+                lon_t, _, _, distance_t = self._calc_body(body, jd, tropical_flags)
+                lon_s, lat_s, speed_s, distance_s = self._calc_body(
+                    body, jd, sidereal_flags
+                )
             except swe.Error:
                 # Already probed at import time, but guard against race
                 # conditions or path changes after engine creation.
@@ -264,6 +273,7 @@ class EphemerisEngine:
                 degree_in_sign=active_degree,
                 retrograde=speed_s < 0,
                 ayanamsa_value=ayanamsa_value,
+                distance_au=round(float(distance_t), 9),
             )
 
         return positions

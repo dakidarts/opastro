@@ -91,6 +91,14 @@ Fields:
 - `zodiac_system`, `ayanamsa`, `house_system`, `node_type` (optional)
 - `tenant_id` (optional)
 
+## `CelestialEventsRequest`
+
+Fields:
+- `period` (optional, `daily` | `weekly` | `monthly` | `yearly`; defaults to `monthly`)
+- `target_date` (optional, defaults to today)
+- `zodiac_system`, `ayanamsa`, `house_system`, `node_type` (optional)
+- `tenant_id` (optional)
+
 ## Shared Birth Model
 
 ```json
@@ -245,6 +253,20 @@ Top-level fields:
 - `date_from`, `date_to`
 - `events[]` (`TransitEvent`)
 - `event_count`
+
+## Response Model: `CelestialEventsResponse`
+
+Top-level fields:
+- `period`
+- `start`, `end`
+- `events[]` (`PeriodEvent`)
+- `notable_events[]`
+- `metrics` (`PeriodMetrics`)
+
+`events[]` includes exact aspects, sign ingresses, direct/retrograde stations,
+lunations, eclipse windows, and retrograde emphasis when present. Each
+`PeriodEvent` contains `timestamp`, `event_type`, body/sign/aspect references,
+optional `exactness`, `narrative_priority`, `section_bias`, and `description`.
 
 ### `TransitEvent`
 

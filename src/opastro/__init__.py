@@ -37,6 +37,7 @@ _NAMESPACE_MODULES = (
     "profiles",
     "scene_renderer",
     "service",
+    "update_checker",
     "versioning",
     "interpretation",
     "interpretation.renderer",

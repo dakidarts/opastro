@@ -47,6 +47,9 @@ opastro
 ```
 
 This opens the main welcome UI with command overview.
+When a newer GitHub release tag is available, the welcome UI shows an update
+notice. Use `opastro --force-update-check catalog` to refresh the check or
+`OPASTRO_UPDATE_CHECK=0` to disable it.
 
 ## Save Defaults (Recommended)
 
@@ -114,13 +117,49 @@ Controls:
 - `enter` toggle factor drill-down
 - `pgup` / `pgdn` content scroll
 - `g` / `G` jump top/end
+- `h` / `?` toggle keyboard help
+- `1` / `2` / `3` / `4` switch daily/weekly/monthly/yearly periods
+- `/` filter sections; `c` clear the active filter
+- `d` toggle compact/expanded density
 - `q` or `esc` quit
+
+The same browser supports birthday and planet reports:
+
+```bash
+opastro ui --kind birthday --sign ARIES --target-date 2026-04-03
+opastro ui --kind planet --planet mars --period daily --sign ARIES --target-date 2026-04-03
+opastro ui --kind events --period monthly --target-date 2026-04-03
+```
+
+Birthday mode uses its yearly cycle and does not switch periods. Planet mode
+supports the same period keys as horoscope mode. Events mode presents each
+celestial event as a navigable section and supports period switching, filtering,
+and JSON/static fallback output.
+
+The interactive view requires a TTY on both stdin and stdout and a terminal at
+least 72 columns wide by 10 rows high. It automatically falls back to the
+static report when the terminal is unavailable, `TERM=dumb`, or the terminal is
+too small. Use `--no-interactive`, `--json`, `--format`, or `--export` for
+scriptable output; fallback/status messages are written to stderr so JSON stays
+machine-readable. Use `--ascii` or `OPASTRO_ASCII=1` for terminals without
+reliable Unicode support.
 
 ### Batch mode
 
 ```bash
 opastro batch --kind horoscope --period daily --signs ARIES,TAURUS --date-from 2026-04-03 --date-to 2026-04-05 --format markdown --export-dir reports/batch
 ```
+
+### Celestial event calendar
+
+```bash
+opastro events --period monthly --target-date 2026-04-03
+opastro events --period monthly --target-date 2026-04-03 --format json
+opastro events --period monthly --target-date 2026-04-03 --format ics --export reports/celestial-events.ics
+```
+
+The calendar surfaces exact aspects, sign ingresses, stations, lunation and
+eclipse windows, and retrograde emphasis without requiring natal birth data.
 
 ### Natal exports (day/night wheel theme)
 

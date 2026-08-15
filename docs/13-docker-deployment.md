@@ -1,6 +1,9 @@
 # Docker Deployment
 
-OpAstro ships a `Dockerfile` and `docker-compose.yml` for containerized deployment.
+The open-core repository does not currently ship a `Dockerfile` or
+`docker-compose.yml`. This document is a deployment blueprint for a consumer or
+future release expansion; the commands below are not runnable until those
+manifests are supplied.
 
 ## Quick Start
 

@@ -2,8 +2,21 @@ import hashlib
 import json
 import re
 import types
+from datetime import date
 
-from horoscope_engine.cli import main
+import horoscope_engine.cli as cli_module
+from horoscope_engine.config import ServiceConfig
+from horoscope_engine.models import HoroscopeRequest, Period
+from horoscope_engine.service import HoroscopeService
+
+from horoscope_engine.cli import (
+    _UIState,
+    _apply_ui_key,
+    _filter_ui_sections,
+    _resolve_batch_signs,
+    _ui_glyphs,
+    main,
+)
 
 
 def _snapshot_fingerprint(text: str) -> str:
@@ -266,10 +279,276 @@ def test_ui_no_interactive_fallback(capsys):
             "--no-interactive",
         ]
     )
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
     assert code == 0
-    assert "UI fallback mode" in out
-    assert "OPASTRO REPORT" in out
+    assert "UI fallback mode" in captured.err
+    assert "OPASTRO REPORT" in captured.out
+
+
+def test_ui_json_fallback_keeps_stdout_machine_readable(capsys):
+    code = main(
+        [
+            "ui",
+            "--period",
+            "daily",
+            "--sign",
+            "ARIES",
+            "--target-date",
+            "2026-04-03",
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert json.loads(captured.out)["sign"] == "ARIES"
+    assert "static output requested" in captured.err
+
+
+def test_ui_key_state_transitions():
+    keys = types.SimpleNamespace(
+        KEY_UP=1001,
+        KEY_DOWN=1002,
+        KEY_ENTER=1003,
+        KEY_NPAGE=1004,
+        KEY_PPAGE=1005,
+    )
+    state = _UIState()
+    assert _apply_ui_key(
+        state, ord("j"), section_count=3, page_height=10, curses_module=keys
+    )
+    assert state.selected == 1
+    _apply_ui_key(state, 10, section_count=3, page_height=10, curses_module=keys)
+    assert state.show_factors is True
+    _apply_ui_key(state, ord(" "), section_count=3, page_height=10, curses_module=keys)
+    assert state.scroll_offset == 8
+    _apply_ui_key(state, ord("?"), section_count=3, page_height=10, curses_module=keys)
+    assert state.help_visible is True
+    _apply_ui_key(state, ord("d"), section_count=3, page_height=10, curses_module=keys)
+    assert state.compact is True
+    _apply_ui_key(state, ord("/"), section_count=3, page_height=10, curses_module=keys)
+    assert state.filter_requested is True
+    state.filter_requested = False
+    state.filter_query = "career"
+    _apply_ui_key(state, ord("c"), section_count=3, page_height=10, curses_module=keys)
+    assert state.filter_query == ""
+    _apply_ui_key(state, ord("3"), section_count=3, page_height=10, curses_module=keys)
+    assert state.requested_period == "monthly"
+    assert not _apply_ui_key(
+        state, ord("q"), section_count=3, page_height=10, curses_module=keys
+    )
+
+
+def test_ui_ascii_glyph_mode(monkeypatch):
+    monkeypatch.setenv("OPASTRO_ASCII", "1")
+    glyphs = _ui_glyphs()
+    assert glyphs == {
+        "bullet": "-",
+        "rule": "-",
+        "divider": "|",
+        "marker": ">",
+        "nav": "up/down",
+    }
+
+
+def test_batch_sign_defaults_and_single_sign():
+    args = types.SimpleNamespace(signs=None)
+    assert _resolve_batch_signs(args) == [
+        "ARIES",
+        "TAURUS",
+        "GEMINI",
+        "CANCER",
+        "LEO",
+        "VIRGO",
+        "LIBRA",
+        "SCORPIO",
+        "SAGITTARIUS",
+        "CAPRICORN",
+        "AQUARIUS",
+        "PISCES",
+    ]
+    args.sign = "taurus"
+    assert _resolve_batch_signs(args) == ["TAURUS"]
+
+
+def test_ui_birthday_mode_json(capsys):
+    code = main(
+        [
+            "ui",
+            "--kind",
+            "birthday",
+            "--sign",
+            "ARIES",
+            "--target-date",
+            "2026-04-03",
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert json.loads(captured.out)["report_type"] == "birthday"
+
+
+def test_ui_planet_mode_json(capsys):
+    code = main(
+        [
+            "ui",
+            "--kind",
+            "planet",
+            "--planet",
+            "mars",
+            "--period",
+            "daily",
+            "--sign",
+            "ARIES",
+            "--target-date",
+            "2026-04-03",
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert json.loads(captured.out)["report_type"] == "planet"
+
+
+def test_ui_events_mode_json(capsys):
+    code = main(
+        [
+            "ui",
+            "--kind",
+            "events",
+            "--period",
+            "monthly",
+            "--target-date",
+            "2026-04-03",
+            "--json",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    payload = json.loads(captured.out)
+    assert payload["period"] == "monthly"
+    assert payload["metrics"]["sample_count"] > 0
+
+
+def test_ui_events_mode_static_fallback(capsys):
+    code = main(
+        [
+            "ui",
+            "--kind",
+            "events",
+            "--period",
+            "daily",
+            "--target-date",
+            "2026-04-03",
+            "--no-interactive",
+        ]
+    )
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "UI fallback mode" in captured.err
+    assert "OPASTRO CELESTIAL EVENTS" in captured.out
+
+
+def test_ui_section_filter_matches_labels():
+    sections = [
+        types.SimpleNamespace(
+            section=types.SimpleNamespace(value="general"),
+            title="General outlook",
+            intensity="steady",
+        ),
+        types.SimpleNamespace(
+            section=types.SimpleNamespace(value="career"),
+            title="Career momentum",
+            intensity="high",
+        ),
+    ]
+    assert _filter_ui_sections(sections, "career") == [sections[1]]
+    assert _filter_ui_sections(sections, "") == sections
+
+
+def test_ui_curses_loop_handles_period_filter_and_density(monkeypatch):
+    payload = HoroscopeService(ServiceConfig()).generate(
+        HoroscopeRequest(
+            period=Period.DAILY,
+            sign="ARIES",
+            target_date=date(2026, 4, 3),
+        )
+    )
+    requested_periods = []
+
+    class FakeCursesError(Exception):
+        pass
+
+    class FakeScreen:
+        def __init__(self):
+            self.keys = [ord("3"), ord("/"), ord("d"), ord("q")]
+
+        def addch(self, *_args):
+            return None
+
+        def addnstr(self, *_args):
+            return None
+
+        def erase(self):
+            return None
+
+        def getmaxyx(self):
+            return (24, 100)
+
+        def getstr(self, *_args):
+            return b"career"
+
+        def getch(self):
+            return self.keys.pop(0)
+
+        def hline(self, *_args):
+            return None
+
+        def keypad(self, *_args):
+            return None
+
+        def refresh(self):
+            return None
+
+    class FakeCurses:
+        A_BOLD = 1
+        A_DIM = 2
+        A_NORMAL = 0
+        A_REVERSE = 4
+        KEY_DOWN = 1001
+        KEY_ENTER = 1002
+        KEY_NPAGE = 1003
+        KEY_PPAGE = 1004
+        KEY_UP = 1005
+        error = FakeCursesError
+
+        @staticmethod
+        def curs_set(_value):
+            return None
+
+        @staticmethod
+        def echo():
+            return None
+
+        @staticmethod
+        def has_colors():
+            return False
+
+        @staticmethod
+        def noecho():
+            return None
+
+        @staticmethod
+        def wrapper(callback):
+            return callback(FakeScreen())
+
+    monkeypatch.setattr(cli_module, "curses", FakeCurses)
+    code = cli_module._run_ui(
+        payload,
+        payload_loader=lambda period: (requested_periods.append(period) or payload),
+    )
+    assert code == 0
+    assert requested_periods == ["monthly"]
 
 
 def test_doctor_fix_dry_run(capsys):
@@ -464,7 +743,7 @@ def test_golden_snapshot_welcome_output(monkeypatch, capsys):
     assert code == 0
     assert (
         _snapshot_fingerprint(out)
-        == "aff82e460f8db11080992f2a1670b17cfc5b2c35ed6b6ac43303ce193c53776f"
+        == "69c71a01dbb4e2fff1d5aafa209fe668685027ab91d778bef06dbc97c93d639f"
     )
 
 
@@ -476,8 +755,45 @@ def test_golden_snapshot_root_help_output(monkeypatch, capsys):
     assert code == 0
     assert (
         _snapshot_fingerprint(out)
-        == "eb12f81eb25b3074c65955d6567fe485ed952dec766cb43e96e29b4afbda9603"
+        == "f140e2beb1c0f9e0f49aca90cbc5de65f689b96ca04269b1b6c70581dbce3c74"
     )
+
+
+def test_celestial_events_json_output(capsys):
+    code = main(
+        [
+            "events",
+            "--period",
+            "monthly",
+            "--target-date",
+            "2026-04-03",
+            "--format",
+            "json",
+        ]
+    )
+    output = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert output["period"] == "monthly"
+    assert output["metrics"]["sample_count"] > 0
+
+
+def test_celestial_events_ics_output(capsys):
+    code = main(
+        [
+            "events",
+            "--period",
+            "daily",
+            "--target-date",
+            "2026-04-03",
+            "--format",
+            "ics",
+        ]
+    )
+    output = capsys.readouterr().out
+    assert code == 0
+    assert output.startswith("BEGIN:VCALENDAR\r\n")
+    assert "PRODID:-//OpAstro//Celestial Events//EN" in output
+    assert output.endswith("END:VCALENDAR\r\n")
 
 
 def test_golden_snapshot_logger_help_output(monkeypatch, capsys):

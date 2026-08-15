@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import argparse
-import curses
+from dataclasses import dataclass
+
+try:
+    import curses
+except ImportError:  # pragma: no cover - exercised on platforms without curses
+    curses = None
 from contextlib import redirect_stdout
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 import difflib
 from html import escape as html_escape
+import hashlib
 import importlib
 from io import StringIO
 import json
@@ -19,7 +25,7 @@ import sys
 import textwrap
 import time
 import traceback
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import uvicorn
 
@@ -27,6 +33,7 @@ from .config import ServiceConfig
 from .models import (
     BirthData,
     BirthdayHoroscopeRequest,
+    CelestialEventsRequest,
     Coordinates,
     HoroscopeRequest,
     NatalBirthchartRequest,
@@ -52,6 +59,7 @@ from .ephemeris_downloader import (
 from .scene_renderer import build_planetary_scene_svg, build_planetary_scene_png
 from .profiles import DEFAULT_PROFILE_NAME, ProfileStore
 from .service import HoroscopeService
+from .update_checker import UpdateCheckResult, check_for_update, update_notice
 from .versioning import resolve_version
 
 WELCOME_BANNER = r"""
@@ -87,6 +95,7 @@ COMMAND_ALIASES = {
     "completion": ["comp", "completions"],
     "ui": ["tui"],
     "batch": ["gen"],
+    "events": ["calendar", "celestial"],
     "render": ["visuals"],
 }
 
@@ -133,6 +142,43 @@ INIT_TEMPLATES: dict[str, dict[str, Any]] = {
 class OpastroArgumentParser(argparse.ArgumentParser):
     def format_help(self) -> str:
         return _render_themed_help(self)
+
+
+@dataclass
+class _UIState:
+    selected: int = 0
+    show_factors: bool = False
+    scroll_offset: int = 0
+    help_visible: bool = False
+    requested_period: Optional[str] = None
+    filter_query: str = ""
+    filter_requested: bool = False
+    compact: bool = False
+
+
+@dataclass(frozen=True)
+class _UIEventKey:
+    value: str
+
+
+@dataclass
+class _UIEventSection:
+    section: _UIEventKey
+    title: str
+    summary: str
+    highlights: list[str]
+    cautions: list[str]
+    actions: list[str]
+    intensity: str
+    factor_details: list[Any]
+
+
+@dataclass
+class _UIEventsPayload:
+    period: Period
+    sign: str
+    sections: list[_UIEventSection]
+    response: Any
 
 
 def _app_version() -> str:
@@ -203,6 +249,16 @@ def _build_base_parser() -> argparse.ArgumentParser:
         action="version",
         version=f"opastro {_app_version()}",
         help="Show installed Opastro version and exit.",
+    )
+    parser.add_argument(
+        "--no-update-check",
+        action="store_true",
+        help="Disable the best-effort latest-release update check for this invocation.",
+    )
+    parser.add_argument(
+        "--force-update-check",
+        action="store_true",
+        help="Bypass the local update-check cache for this invocation.",
     )
     subparsers = parser.add_subparsers(
         dest="command", parser_class=OpastroArgumentParser
@@ -436,6 +492,48 @@ def _build_base_parser() -> argparse.ArgumentParser:
     )
     planet.set_defaults(handler=_handle_planet)
 
+    events = subparsers.add_parser(
+        "events",
+        aliases=COMMAND_ALIASES["events"],
+        help="Generate a global celestial event calendar.",
+        description=(
+            "List exact aspects, ingresses, stations, lunations, eclipse windows, "
+            "and retrograde emphasis for a standard period."
+        ),
+    )
+    events.add_argument(
+        "--period",
+        choices=[period.value for period in Period],
+        default=Period.MONTHLY.value,
+        help="Calendar window (default: monthly).",
+    )
+    events.add_argument(
+        "--target-date",
+        help="Date anchoring the calendar window (defaults to today).",
+    )
+    events.add_argument(
+        "--zodiac-system", choices=["tropical", "sidereal"], default=None
+    )
+    events.add_argument(
+        "--ayanamsa",
+        choices=["lahiri", "fagan_bradley", "krishnamurti", "raman", "yukteswar"],
+        default=None,
+    )
+    events.add_argument(
+        "--house-system", choices=["placidus", "whole_sign", "equal", "koch"]
+    )
+    events.add_argument("--node-type", choices=["true", "mean"])
+    events.add_argument("--tenant-id", help="Tenant identifier for cache isolation.")
+    events.add_argument(
+        "--format",
+        dest="events_format",
+        choices=["text", "json", "ics"],
+        default="text",
+        help="Output format (default: text).",
+    )
+    events.add_argument("--export", help="Optional output file path.")
+    events.set_defaults(handler=_handle_celestial_events)
+
     natal = subparsers.add_parser(
         "natal",
         aliases=COMMAND_ALIASES["natal"],
@@ -502,11 +600,32 @@ def _build_base_parser() -> argparse.ArgumentParser:
         help="Interactive TUI report browser with section drill-down.",
         description="Launch curses-based keyboard UI for report navigation.",
     )
-    _add_common_report_args(ui, require_period=True)
+    ui.add_argument(
+        "--kind",
+        choices=["horoscope", "birthday", "planet", "events"],
+        default="horoscope",
+        help="Report mode to browse (default: horoscope).",
+    )
+    ui.add_argument(
+        "--planet",
+        choices=[p.value for p in PlanetName],
+        help="Planet required for --kind planet.",
+    )
+    ui.add_argument(
+        "--period",
+        choices=["daily", "weekly", "monthly", "yearly"],
+        help="Report period; required for horoscope/planet and optional for events.",
+    )
+    _add_common_report_args(ui, require_period=False)
     ui.add_argument(
         "--no-interactive",
         action="store_true",
         help="Fallback to static text render (no curses).",
+    )
+    ui.add_argument(
+        "--ascii",
+        action="store_true",
+        help="Use ASCII dividers and markers for limited terminals.",
     )
     ui.set_defaults(handler=_handle_ui)
 
@@ -530,6 +649,10 @@ def _build_base_parser() -> argparse.ArgumentParser:
     batch.add_argument(
         "--signs",
         help="Comma-separated signs. Defaults to profile sign or all zodiac signs.",
+    )
+    batch.add_argument(
+        "--sign",
+        help="Generate one sign. Equivalent to a one-item --signs value.",
     )
     batch.add_argument("--target-date", help="Single ISO date YYYY-MM-DD.")
     batch.add_argument("--date-from", help="Range start ISO date YYYY-MM-DD.")
@@ -633,6 +756,30 @@ def _build_base_parser() -> argparse.ArgumentParser:
         action="store_true",
         default=False,
         help="Draw aspect connector lines (default false).",
+    )
+    planetary_scene.add_argument(
+        "--include-zodiac-band",
+        action="store_true",
+        default=True,
+        help="Draw the tropical zodiac reference band (default true).",
+    )
+    planetary_scene.add_argument(
+        "--no-zodiac-band",
+        action="store_false",
+        dest="include_zodiac_band",
+        help="Omit the tropical zodiac reference band.",
+    )
+    planetary_scene.add_argument(
+        "--include-motion",
+        action="store_true",
+        default=True,
+        help="Draw direct/retrograde motion trails (default true).",
+    )
+    planetary_scene.add_argument(
+        "--no-motion",
+        action="store_false",
+        dest="include_motion",
+        help="Omit instantaneous motion trails.",
     )
     planetary_scene.add_argument(
         "--transparent",
@@ -968,13 +1115,8 @@ def _gradient_lines(
 
 
 def _term_width() -> int:
-    return max(
-        72,
-        min(
-            DEFAULT_WRAP_WIDTH,
-            shutil.get_terminal_size((DEFAULT_WRAP_WIDTH, 20)).columns,
-        ),
-    )
+    columns = shutil.get_terminal_size((DEFAULT_WRAP_WIDTH, 20)).columns
+    return max(20, min(DEFAULT_WRAP_WIDTH, columns))
 
 
 def _wrap(line: str, indent: str = "") -> str:
@@ -996,6 +1138,20 @@ def _wrap_bullet(line: str, indent: str = "    - ") -> str:
 
 
 def _table_chars() -> dict[str, str]:
+    if _ascii_terminal():
+        return {
+            "h": "-",
+            "v": "|",
+            "tl": "+",
+            "tr": "+",
+            "bl": "+",
+            "br": "+",
+            "tm": "+",
+            "bm": "+",
+            "lm": "+",
+            "rm": "+",
+            "mm": "+",
+        }
     encoding = (getattr(sys.stdout, "encoding", "") or "").lower()
     if "utf" not in encoding:
         return {
@@ -1023,6 +1179,34 @@ def _table_chars() -> dict[str, str]:
         "mm": "┼",
         "lm": "├",
         "rm": "┤",
+    }
+
+
+def _ascii_terminal(explicit: bool = False) -> bool:
+    if explicit:
+        return True
+    mode = (os.getenv("OPASTRO_ASCII") or "").strip().lower()
+    if mode in {"1", "true", "on", "yes"}:
+        return True
+    encoding = (getattr(sys.stdout, "encoding", "") or "").lower()
+    return bool(encoding and "utf" not in encoding)
+
+
+def _ui_glyphs(*, ascii_mode: bool = False) -> dict[str, str]:
+    if _ascii_terminal(ascii_mode):
+        return {
+            "bullet": "-",
+            "rule": "-",
+            "divider": "|",
+            "marker": ">",
+            "nav": "up/down",
+        }
+    return {
+        "bullet": "•",
+        "rule": "─",
+        "divider": "│",
+        "marker": "▸",
+        "nav": "↑↓",
     }
 
 
@@ -1543,7 +1727,7 @@ def _render_output(
     if export_path:
         target = Path(export_path).expanduser()
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(rendered)
+        target.write_text(rendered, encoding="utf-8")
         print(f"saved output to {target}", file=sys.stderr)
     return 0
 
@@ -1561,7 +1745,7 @@ def _report_to_string(payload, output_format: str) -> str:
 def _save_export(content: str, export_path: str) -> Path:
     target = Path(export_path).expanduser()
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_text(content)
+    target.write_text(content, encoding="utf-8")
     return target
 
 
@@ -1824,7 +2008,77 @@ def _build_planet_request(args: argparse.Namespace) -> PlanetHoroscopeRequest:
     )
 
 
+def _build_celestial_events_request(args: argparse.Namespace) -> CelestialEventsRequest:
+    return CelestialEventsRequest(
+        period=args.period or Period.MONTHLY.value,
+        target_date=_parse_date(args.target_date) if args.target_date else None,
+        zodiac_system=getattr(args, "zodiac_system", None),
+        ayanamsa=getattr(args, "ayanamsa", None),
+        house_system=getattr(args, "house_system", None),
+        node_type=getattr(args, "node_type", None),
+        tenant_id=getattr(args, "tenant_id", None),
+    )
+
+
+def _build_ui_events_payload(response: Any) -> _UIEventsPayload:
+    sections: list[_UIEventSection] = []
+    for event in response.events:
+        timestamp = event.timestamp.strftime("%Y-%m-%d %H:%M UTC")
+        exactness = (
+            f" Orb: {event.exactness:.2f} degrees."
+            if event.exactness is not None
+            else ""
+        )
+        references = [
+            value for value in (event.body1, event.body2, event.sign) if value
+        ]
+        priority = event.narrative_priority
+        intensity = (
+            "high" if priority >= 1.5 else "elevated" if priority >= 1.0 else "steady"
+        )
+        sections.append(
+            _UIEventSection(
+                section=_UIEventKey(event.event_type),
+                title=event.description,
+                summary=f"{timestamp} | {event.event_type}.{exactness}",
+                highlights=[
+                    f"References: {', '.join(references)}"
+                    if references
+                    else "Global ephemeris event",
+                    f"Narrative priority: {priority:.3f}",
+                ],
+                cautions=[],
+                actions=[],
+                intensity=intensity,
+                factor_details=[],
+            )
+        )
+    if not sections:
+        sections.append(
+            _UIEventSection(
+                section=_UIEventKey("calendar"),
+                title="No notable celestial events",
+                summary="The selected period contains no events in the current event catalog.",
+                highlights=[],
+                cautions=[],
+                actions=[],
+                intensity="quiet",
+                factor_details=[],
+            )
+        )
+    return _UIEventsPayload(
+        period=response.period,
+        sign="GLOBAL",
+        sections=sections,
+        response=response,
+    )
+
+
 def _generate_payload(service: HoroscopeService, args: argparse.Namespace, kind: str):
+    if kind == "events":
+        return _build_ui_events_payload(
+            service.generate_celestial_events(_build_celestial_events_request(args))
+        )
     if kind == "birthday":
         return service.generate_birthday(_build_birthday_request(args))
     if kind == "planet":
@@ -2039,7 +2293,7 @@ def _render_explain_output(
     return 0
 
 
-def _show_welcome() -> int:
+def _show_welcome(update_info: UpdateCheckResult | None = None) -> int:
     print(
         _gradient_lines(
             WELCOME_BANNER.strip("\n"),
@@ -2053,6 +2307,9 @@ def _show_welcome() -> int:
             COLOR_ACCENT_BOLD,
         )
     )
+    notice = update_notice(update_info) if update_info else None
+    if notice:
+        print(_style(notice, "1;33"))
     print(
         _wrap(
             "Enterprise-grade deterministic calculations with lightweight open meanings and premium-ready API hooks."
@@ -2070,6 +2327,7 @@ def _show_welcome() -> int:
         ("horoscope", "Generate a standard period report from sign or birth data."),
         ("birthday", "Generate a yearly birthday-cycle report."),
         ("planet", "Generate a planet-focused report for deeper diagnostics."),
+        ("events", "Browse global celestial events or export an iCalendar feed."),
         ("natal", "Generate natal analysis and export wheel/map/pdf assets."),
         ("explain", "Show factor provenance for each section line."),
         ("completion", "Print shell completion scripts for bash/zsh/fish."),
@@ -2094,8 +2352,8 @@ def _show_welcome() -> int:
     return 0
 
 
-def _handle_welcome(_: argparse.Namespace) -> int:
-    return _show_welcome()
+def _handle_welcome(args: argparse.Namespace) -> int:
+    return _show_welcome(getattr(args, "update_info", None))
 
 
 def _handle_catalog(_: argparse.Namespace) -> int:
@@ -3088,13 +3346,183 @@ def _wrap_for_width(text: str, width: int) -> list[str]:
     return parts if parts else [""]
 
 
-def _run_ui(payload) -> int:
+def _filter_ui_sections(sections: list[Any], query: str) -> list[Any]:
+    needle = query.strip().casefold()
+    if not needle:
+        return sections
+    return [
+        section
+        for section in sections
+        if needle in section.section.value.casefold()
+        or needle in section.title.casefold()
+        or needle in section.intensity.casefold()
+    ]
+
+
+def _apply_ui_key(
+    state: _UIState,
+    key: int,
+    *,
+    section_count: int,
+    page_height: int,
+    curses_module: Any = None,
+    allow_period_switch: bool = True,
+) -> bool:
+    """Apply one keypress and return whether the UI should keep running."""
+    keys = curses_module or curses
+    key_up = getattr(keys, "KEY_UP", -1001)
+    key_down = getattr(keys, "KEY_DOWN", -1002)
+    key_enter = getattr(keys, "KEY_ENTER", -1003)
+    key_next_page = getattr(keys, "KEY_NPAGE", -1004)
+    key_previous_page = getattr(keys, "KEY_PPAGE", -1005)
+    step = max(1, page_height - 2)
+
+    if key in (ord("q"), 27):
+        return False
+    if key == ord("/"):
+        state.filter_requested = True
+        return True
+    if key == ord("c"):
+        state.filter_query = ""
+        state.selected = 0
+        state.scroll_offset = 0
+        return True
+    if key in (ord("?"), ord("h")):
+        state.help_visible = not state.help_visible
+        state.scroll_offset = 0
+        return True
+    if key == ord("d"):
+        state.compact = not state.compact
+        state.scroll_offset = 0
+        return True
+    if allow_period_switch and key in (
+        ord("1"),
+        ord("2"),
+        ord("3"),
+        ord("4"),
+    ):
+        state.requested_period = {
+            ord("1"): "daily",
+            ord("2"): "weekly",
+            ord("3"): "monthly",
+            ord("4"): "yearly",
+        }[key]
+        return True
+    if section_count <= 0:
+        return True
+    if key in (key_up, ord("k")):
+        state.selected = (state.selected - 1) % section_count
+        state.scroll_offset = 0
+    elif key in (key_down, ord("j")):
+        state.selected = (state.selected + 1) % section_count
+        state.scroll_offset = 0
+    elif key in (10, 13, key_enter):
+        state.show_factors = not state.show_factors
+        state.scroll_offset = 0
+    elif key in (key_next_page, ord(" ")):
+        state.scroll_offset += step
+    elif key in (key_previous_page, ord("b")):
+        state.scroll_offset = max(0, state.scroll_offset - step)
+    elif key == ord("g"):
+        state.scroll_offset = 0
+    elif key == ord("G"):
+        state.scroll_offset = 10**9
+    return True
+
+
+def _ui_terminal_reason() -> Optional[str]:
+    if curses is None:
+        return "curses is unavailable on this platform"
+    if (os.getenv("TERM") or "").strip().lower() == "dumb":
+        return "TERM=dumb does not support the interactive UI"
+    if not sys.stdin.isatty() or not sys.stdout.isatty():
+        return "stdin and stdout must both be interactive terminals"
+    size = shutil.get_terminal_size((DEFAULT_WRAP_WIDTH, 20))
+    if size.columns < 72 or size.lines < 10:
+        return "terminal is too small; resize to at least 72x10"
+    return None
+
+
+def _render_ui_fallback(
+    payload,
+    args: argparse.Namespace,
+    reason: str,
+    update_info: UpdateCheckResult | None = None,
+) -> int:
+    print(f"UI fallback mode: {reason}.", file=sys.stderr)
+    notice = update_notice(update_info) if update_info else None
+    if notice:
+        print(notice, file=sys.stderr)
+    if isinstance(payload, _UIEventsPayload):
+        output_format = _resolve_output_format(args)
+        if output_format == "json":
+            rendered = payload.response.model_dump_json(indent=2)
+        else:
+            rendered = _render_celestial_events_text(payload.response)
+        if args.export:
+            target = _save_export(rendered, args.export)
+            print(f"saved output to {target}", file=sys.stderr)
+        else:
+            print(rendered, end="" if rendered.endswith("\n") else "\n")
+        return 0
+    return _render_output(
+        payload,
+        output_format=_resolve_output_format(args),
+        export_path=args.export,
+    )
+
+
+def _prompt_ui_filter(stdscr, state: _UIState, theme: dict[str, int]) -> None:
+    height, width = stdscr.getmaxyx()
+    prompt = "Filter sections (Enter apply, Esc cancel): "
+    prompt_x = min(len(prompt), max(0, width - 1))
+    max_len = max(1, width - prompt_x - 1)
+    previous = state.filter_query
+    try:
+        curses.echo()
+        try:
+            curses.curs_set(1)
+        except curses.error:
+            pass
+        _safe_ui_add = getattr(stdscr, "addnstr", None)
+        if _safe_ui_add is not None:
+            stdscr.addnstr(height - 1, 0, prompt, max(1, width - 1), theme["muted"])
+        raw = stdscr.getstr(height - 1, prompt_x, max_len)
+        if isinstance(raw, bytes):
+            state.filter_query = raw.decode("utf-8", errors="replace").strip()
+        else:
+            state.filter_query = str(raw).strip()
+    except curses.error:
+        state.filter_query = previous
+    finally:
+        curses.noecho()
+        try:
+            curses.curs_set(0)
+        except curses.error:
+            pass
+    state.selected = 0
+    state.scroll_offset = 0
+
+
+def _run_ui(
+    payload,
+    *,
+    ascii_mode: bool = False,
+    payload_loader: Optional[Callable[[str], Any]] = None,
+    allow_period_switch: bool = True,
+    mode_label: str = "horoscope",
+    update_info: UpdateCheckResult | None = None,
+) -> int:
+    if curses is None:
+        raise RuntimeError("curses is unavailable on this platform")
     sections = payload.sections
     if not sections:
         print("No sections available for UI rendering.")
         return 0
 
     def _ui(stdscr) -> None:
+        nonlocal payload, sections
+
         def _safe_add(y: int, x: int, text: str, max_len: int, attr: int = 0) -> None:
             if max_len <= 0:
                 return
@@ -3111,7 +3539,7 @@ def _run_ui(payload) -> int:
                 "muted": curses.A_DIM,
                 "body": curses.A_NORMAL,
             }
-            if not curses.has_colors():
+            if not _should_colorize() or not curses.has_colors():
                 return theme
             try:
                 curses.start_color()
@@ -3134,85 +3562,185 @@ def _run_ui(payload) -> int:
         curses.curs_set(0)
         stdscr.keypad(True)
         theme = _init_theme()
-        selected = 0
-        show_factors = False
-        scroll_offset = 0
+        state = _UIState()
+        glyphs = _ui_glyphs(ascii_mode=ascii_mode)
 
         while True:
             stdscr.erase()
             height, width = stdscr.getmaxyx()
+            visible_sections = _filter_ui_sections(sections, state.filter_query)
+            if visible_sections:
+                state.selected = min(state.selected, len(visible_sections) - 1)
+            if width < 72 or height < 10:
+                _safe_add(
+                    0,
+                    0,
+                    "Terminal too small for the split UI. Resize to at least 72x10.",
+                    max(1, width - 1),
+                    theme["accent"],
+                )
+                _safe_add(
+                    min(2, max(0, height - 1)),
+                    0,
+                    "Press q or Esc to quit.",
+                    max(1, width - 1),
+                    theme["muted"],
+                )
+                stdscr.refresh()
+                key = stdscr.getch()
+                if not _apply_ui_key(
+                    state,
+                    key,
+                    section_count=len(visible_sections),
+                    page_height=max(1, height - 5),
+                    allow_period_switch=allow_period_switch,
+                ):
+                    break
+                if state.filter_requested:
+                    state.filter_requested = False
+                    _prompt_ui_filter(stdscr, state, theme)
+                if state.requested_period and payload_loader:
+                    requested_period = state.requested_period
+                    state.requested_period = None
+                    payload = payload_loader(requested_period)
+                    sections = payload.sections
+                    state.selected = 0
+                    state.show_factors = False
+                    state.scroll_offset = 0
+                continue
             left_w = max(24, min(38, width // 3))
             right_x = left_w + 2
             right_w = max(20, width - right_x - 1)
             page_h = max(6, height - 5)
 
             header = (
-                f"OPASTRO UI • {payload.sign} • {payload.period.value} • "
-                f"sections:{len(sections)} • factors:{'on' if show_factors else 'off'}"
+                f"OPASTRO UI {glyphs['bullet']} {mode_label} {glyphs['bullet']} {payload.sign} {glyphs['bullet']} "
+                f"{payload.period.value} {glyphs['bullet']} sections:{len(visible_sections)}/{len(sections)} "
+                f"{glyphs['bullet']} factors:{'on' if state.show_factors else 'off'} "
+                f"{glyphs['bullet']} density:{'compact' if state.compact else 'expanded'}"
             )
+            notice = update_notice(update_info) if update_info else None
+            if notice:
+                header += f" {glyphs['bullet']} update:{update_info.latest_version}"
             _safe_add(0, 0, header, width - 1, theme["header"])
             try:
-                stdscr.hline(1, 0, ord("─"), width - 1)
+                stdscr.hline(1, 0, ord(glyphs["rule"]), width - 1)
             except curses.error:
                 stdscr.hline(1, 0, ord("-"), width - 1)
 
             left_view_h = max(1, height - 4)
-            left_start = max(0, selected - (left_view_h // 2))
-            left_end = min(len(sections), left_start + left_view_h)
+            left_start = max(0, state.selected - (left_view_h // 2))
+            left_end = min(len(visible_sections), left_start + left_view_h)
             if left_end - left_start < left_view_h:
                 left_start = max(0, left_end - left_view_h)
 
             for row_idx, idx in enumerate(range(left_start, left_end)):
-                section = sections[idx]
-                label = f"{section.section.value.replace('_', ' ').title()} ({section.intensity})"
-                attr = theme["selected"] if idx == selected else theme["body"]
+                section = visible_sections[idx]
+                marker = glyphs["marker"] if idx == state.selected else " "
+                label = f"{marker} {section.section.value.replace('_', ' ').title()} ({section.intensity})"
+                attr = theme["selected"] if idx == state.selected else theme["body"]
                 _safe_add(2 + row_idx, 0, label, left_w - 1, attr)
 
             for row in range(2, height - 1):
                 try:
-                    stdscr.addch(row, left_w, ord("│"), theme["muted"])
+                    stdscr.addch(row, left_w, ord(glyphs["divider"]), theme["muted"])
                 except curses.error:
                     stdscr.addch(row, left_w, ord("|"), theme["muted"])
 
-            section = sections[selected]
             lines: list[tuple[str, str]] = []
-            lines.append(("title", section.title))
-            lines.append(("blank", ""))
-            for item in _wrap_for_width(section.summary, right_w):
-                lines.append(("body", item))
-            lines.append(("blank", ""))
-            lines.append(("label", "Highlights:"))
-            for item in section.highlights[:3]:
-                for wrapped in _wrap_for_width(f"- {item}", right_w):
-                    lines.append(("body", wrapped))
-            lines.append(("blank", ""))
-            lines.append(("label", "Cautions:"))
-            for item in section.cautions[:2]:
-                for wrapped in _wrap_for_width(f"- {item}", right_w):
-                    lines.append(("body", wrapped))
-            lines.append(("blank", ""))
-            lines.append(("label", "Actions:"))
-            for item in section.actions[:2]:
-                for wrapped in _wrap_for_width(f"- {item}", right_w):
-                    lines.append(("body", wrapped))
-
-            if show_factors:
-                lines.append(("blank", ""))
-                lines.append(("label", "Factor drill-down:"))
-                for detail in section.factor_details[:8]:
-                    desc = detail.factor_insights.get("lite_meaning") or ""
-                    for wrapped in _wrap_for_width(
-                        f"- {detail.factor_type}={detail.factor_value} ({detail.weight:.2f})",
-                        right_w,
-                    ):
-                        lines.append(("factor", wrapped))
-                    if desc:
-                        for wrapped in _wrap_for_width(f"  {desc}", right_w):
+            if state.help_visible:
+                lines.extend(
+                    [
+                        ("title", "Keyboard shortcuts"),
+                        ("blank", ""),
+                        *(
+                            [
+                                (
+                                    "body",
+                                    "Events mode       Select an event; filter by type with /",
+                                ),
+                                ("blank", ""),
+                            ]
+                            if mode_label == "events"
+                            else []
+                        ),
+                        ("body", "Up/Down or j/k  Select a section"),
+                        ("body", "Enter             Toggle factor details"),
+                        ("body", "Space/Page Down   Scroll forward"),
+                        ("body", "b/Page Up         Scroll backward"),
+                        ("body", "g/G               Jump to top/end"),
+                        ("body", "h/?               Toggle this help"),
+                        ("body", "/                 Filter sections"),
+                        ("body", "c                 Clear section filter"),
+                        ("body", "d                 Toggle compact/expanded density"),
+                        (
+                            "body",
+                            (
+                                "1-4               Switch report period"
+                                if allow_period_switch
+                                else "1-4               Period switching unavailable"
+                            ),
+                        ),
+                        ("body", "q/Esc             Quit"),
+                    ]
+                )
+            else:
+                if not visible_sections:
+                    lines.extend(
+                        [
+                            ("title", "No matching sections"),
+                            ("blank", ""),
+                            ("body", f"No section matches: {state.filter_query}"),
+                            ("body", "Press / to change the filter or c to clear it."),
+                        ]
+                    )
+                    section = None
+                else:
+                    section = visible_sections[state.selected]
+                    lines.append(("title", section.title))
+                    lines.append(("blank", ""))
+                    summary_lines = _wrap_for_width(section.summary, right_w)
+                    if state.compact:
+                        summary_lines = summary_lines[:2]
+                    for item in summary_lines:
+                        lines.append(("body", item))
+                    lines.append(("blank", ""))
+                    lines.append(("label", "Highlights:"))
+                    highlight_limit = 1 if state.compact else 3
+                    for item in section.highlights[:highlight_limit]:
+                        for wrapped in _wrap_for_width(f"- {item}", right_w):
+                            lines.append(("body", wrapped))
+                    lines.append(("blank", ""))
+                    lines.append(("label", "Cautions:"))
+                    caution_limit = 1 if state.compact else 2
+                    for item in section.cautions[:caution_limit]:
+                        for wrapped in _wrap_for_width(f"- {item}", right_w):
+                            lines.append(("body", wrapped))
+                    lines.append(("blank", ""))
+                    lines.append(("label", "Actions:"))
+                    action_limit = 1 if state.compact else 2
+                    for item in section.actions[:action_limit]:
+                        for wrapped in _wrap_for_width(f"- {item}", right_w):
                             lines.append(("body", wrapped))
 
+                    if state.show_factors:
+                        lines.append(("blank", ""))
+                        lines.append(("label", "Factor drill-down:"))
+                        factor_limit = 4 if state.compact else 8
+                        for detail in section.factor_details[:factor_limit]:
+                            desc = detail.factor_insights.get("lite_meaning") or ""
+                            for wrapped in _wrap_for_width(
+                                f"- {detail.factor_type}={detail.factor_value} ({detail.weight:.2f})",
+                                right_w,
+                            ):
+                                lines.append(("factor", wrapped))
+                            if desc:
+                                for wrapped in _wrap_for_width(f"  {desc}", right_w):
+                                    lines.append(("body", wrapped))
+
             max_scroll = max(0, len(lines) - page_h)
-            scroll_offset = max(0, min(scroll_offset, max_scroll))
-            visible_lines = lines[scroll_offset : scroll_offset + page_h]
+            state.scroll_offset = max(0, min(state.scroll_offset, max_scroll))
+            visible_lines = lines[state.scroll_offset : state.scroll_offset + page_h]
             for idx, (kind, line) in enumerate(visible_lines):
                 y = 2 + idx
                 if y >= height - 1:
@@ -3226,59 +3754,105 @@ def _run_ui(payload) -> int:
                     attr = theme["muted"]
                 _safe_add(y, right_x, line, right_w, attr)
 
-            footer = "q/esc quit • ↑↓ or j/k section • enter factors • pgup/pgdn scroll • g top • G end"
+            footer = (
+                f"q/esc quit {glyphs['bullet']} {glyphs['nav']}/j/k section {glyphs['bullet']} "
+                f"enter factors {glyphs['bullet']} pgup/pgdn scroll {glyphs['bullet']} "
+                f"h/? help {glyphs['bullet']} / filter {glyphs['bullet']} d density"
+            )
+            if allow_period_switch:
+                footer += f" {glyphs['bullet']} 1-4 period"
             _safe_add(height - 1, 0, footer, width - 1, theme["muted"])
 
             stdscr.refresh()
             key = stdscr.getch()
-            if key in (ord("q"), 27):
+            if not _apply_ui_key(
+                state,
+                key,
+                section_count=len(visible_sections),
+                page_height=page_h,
+                allow_period_switch=allow_period_switch,
+            ):
                 break
-            if key in (curses.KEY_UP, ord("k")):
-                selected = (selected - 1) % len(sections)
-                scroll_offset = 0
-            elif key in (curses.KEY_DOWN, ord("j")):
-                selected = (selected + 1) % len(sections)
-                scroll_offset = 0
-            elif key in (10, 13, curses.KEY_ENTER):
-                show_factors = not show_factors
-                scroll_offset = 0
-            elif key in (curses.KEY_NPAGE, ord(" ")):
-                scroll_offset += max(1, page_h - 2)
-            elif key in (curses.KEY_PPAGE, ord("b")):
-                scroll_offset -= max(1, page_h - 2)
-            elif key == ord("g"):
-                scroll_offset = 0
-            elif key == ord("G"):
-                scroll_offset = 10**9
+            if state.filter_requested:
+                state.filter_requested = False
+                _prompt_ui_filter(stdscr, state, theme)
+            if state.requested_period and payload_loader:
+                requested_period = state.requested_period
+                state.requested_period = None
+                payload = payload_loader(requested_period)
+                sections = payload.sections
+                state.selected = 0
+                state.show_factors = False
+                state.scroll_offset = 0
 
     curses.wrapper(_ui)
     return 0
 
 
 def _handle_ui(args: argparse.Namespace) -> int:
+    explicit_output_requested = bool(
+        args.export
+        or getattr(args, "json", False)
+        or getattr(args, "output_format", None) is not None
+    )
     _apply_profile_defaults(args)
     service = HoroscopeService(ServiceConfig())
-    payload = service.generate(_build_horoscope_request(args))
+    payload = _generate_payload(service, args, args.kind)
 
-    if args.no_interactive or not sys.stdout.isatty():
-        print(
-            "UI fallback mode (non-interactive). Use without --no-interactive in a TTY terminal."
+    if args.no_interactive or explicit_output_requested:
+        reason = (
+            "static output requested"
+            if explicit_output_requested
+            else "--no-interactive"
         )
-        return _render_output(payload, output_format="text", export_path=args.export)
+        return _render_ui_fallback(
+            payload, args, reason, getattr(args, "update_info", None)
+        )
+
+    terminal_reason = _ui_terminal_reason()
+    if terminal_reason:
+        return _render_ui_fallback(
+            payload, args, terminal_reason, getattr(args, "update_info", None)
+        )
 
     try:
-        return _run_ui(payload)
+
+        def _load_period(period: str):
+            period_args = argparse.Namespace(**vars(args))
+            period_args.period = period
+            return _generate_payload(service, period_args, args.kind)
+
+        mode_label = args.kind
+        if args.kind == "planet":
+            mode_label = f"planet:{args.planet}"
+
+        return _run_ui(
+            payload,
+            ascii_mode=getattr(args, "ascii", False),
+            payload_loader=_load_period,
+            allow_period_switch=args.kind != "birthday",
+            mode_label=mode_label,
+            update_info=getattr(args, "update_info", None),
+        )
+    except KeyboardInterrupt:
+        print("UI cancelled.", file=sys.stderr)
+        return 130
     except curses.error:
-        print("UI unavailable in this terminal. Falling back to text output.")
-        return _render_output(payload, output_format="text", export_path=args.export)
+        return _render_ui_fallback(
+            payload,
+            args,
+            "curses could not initialize",
+            getattr(args, "update_info", None),
+        )
 
 
 def _resolve_batch_signs(args: argparse.Namespace) -> list[str]:
     explicit = _parse_signs(args.signs)
     if explicit:
         return explicit
-    if args.sign:
-        normalized = _normalize_sign(args.sign)
+    sign = getattr(args, "sign", None)
+    if sign:
+        normalized = _normalize_sign(sign)
         if normalized:
             return [normalized]
     return list(ZODIAC_SIGNS)
@@ -3394,6 +3968,106 @@ def _handle_planet(args: argparse.Namespace) -> int:
     )
 
 
+def _ics_escape(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+    )
+
+
+def _ics_datetime(value: datetime) -> str:
+    aware = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+    return aware.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _render_celestial_events_text(response) -> str:
+    lines = [
+        "OPASTRO CELESTIAL EVENTS",
+        f"Period: {response.period.value}",
+        f"Window: {response.start.date()} to {response.end.date()}",
+        f"Events: {len(response.events)}",
+        "",
+    ]
+    if response.events:
+        for event in response.events:
+            timestamp = event.timestamp.strftime("%Y-%m-%d %H:%M UTC")
+            detail = event.description
+            if event.exactness is not None:
+                detail += f" | orb {event.exactness:.2f}°"
+            lines.append(f"{timestamp} | {event.event_type} | {detail}")
+    else:
+        lines.append("No notable celestial events in this window.")
+    if response.metrics.retrograde_bodies:
+        lines.extend(
+            [
+                "",
+                "Retrograde emphasis: " + ", ".join(response.metrics.retrograde_bodies),
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def _render_celestial_events_ics(response) -> str:
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//OpAstro//Celestial Events//EN",
+        "CALSCALE:GREGORIAN",
+        f"X-WR-CALNAME:{_ics_escape(f'OpAstro {response.period.value} Celestial Events')}",
+    ]
+    for event in response.events:
+        seed = "|".join(
+            [
+                event.event_type,
+                event.timestamp.isoformat(),
+                event.description,
+            ]
+        )
+        uid = hashlib.sha256(seed.encode("utf-8")).hexdigest()[:24] + "@opastro"
+        start = _ics_datetime(event.timestamp)
+        end = _ics_datetime(event.timestamp + timedelta(hours=1))
+        description = event.event_type
+        if event.exactness is not None:
+            description += f"; exactness={event.exactness:.2f} degrees"
+        lines.extend(
+            [
+                "BEGIN:VEVENT",
+                f"UID:{uid}",
+                f"DTSTAMP:{start}",
+                f"DTSTART:{start}",
+                f"DTEND:{end}",
+                f"SUMMARY:{_ics_escape(event.description)}",
+                f"DESCRIPTION:{_ics_escape(description)}",
+                f"X-OPASTRO-EVENT-TYPE:{_ics_escape(event.event_type)}",
+                "END:VEVENT",
+            ]
+        )
+    lines.append("END:VCALENDAR")
+    return "\r\n".join(lines) + "\r\n"
+
+
+def _handle_celestial_events(args: argparse.Namespace) -> int:
+    service = HoroscopeService(ServiceConfig())
+    request = _build_celestial_events_request(args)
+    response = service.generate_celestial_events(request)
+    if args.events_format == "json":
+        rendered = response.model_dump_json(indent=2)
+    elif args.events_format == "ics":
+        rendered = _render_celestial_events_ics(response)
+    else:
+        rendered = _render_celestial_events_text(response)
+
+    if args.export:
+        target = _save_export(rendered, args.export)
+        print(f"saved output to {target}", file=sys.stderr)
+    else:
+        print(rendered, end="" if rendered.endswith("\n") else "\n")
+    return 0
+
+
 def _handle_natal(args: argparse.Namespace) -> int:
     from tqdm import tqdm
 
@@ -3455,6 +4129,8 @@ def _handle_render_planetary_scene(args: argparse.Namespace) -> int:
             include_minor_bodies=args.include_minor_bodies,
             include_aspects=args.include_aspects,
             transparent_bg=args.transparent,
+            include_zodiac_band=args.include_zodiac_band,
+            include_motion=args.include_motion,
         )
     else:
         build_planetary_scene_svg(
@@ -3467,6 +4143,8 @@ def _handle_render_planetary_scene(args: argparse.Namespace) -> int:
             include_minor_bodies=args.include_minor_bodies,
             include_aspects=args.include_aspects,
             transparent_bg=args.transparent,
+            include_zodiac_band=args.include_zodiac_band,
+            include_motion=args.include_motion,
         )
     print(f"saved output to {export_path}", file=sys.stderr)
     return 0
@@ -3496,13 +4174,30 @@ def _suggest_command(token: str) -> str:
     return f"Unknown command '{token}'. Run `opastro --help`."
 
 
+def _maybe_check_for_update(
+    *,
+    no_update_check: bool = False,
+    force_update_check: bool = False,
+) -> UpdateCheckResult | None:
+    if no_update_check:
+        return None
+    mode = (os.getenv("OPASTRO_UPDATE_CHECK") or "").strip().lower()
+    if mode in {"0", "false", "off", "disabled", "no"}:
+        return None
+    if not force_update_check and mode not in {"1", "true", "always", "force"}:
+        if not sys.stdout.isatty() and not sys.stderr.isatty():
+            return None
+    return check_for_update(force=force_update_check)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     raw_argv = list(argv) if argv is not None else sys.argv[1:]
     started_at = time.perf_counter()
     analytics_command = _canonical_command_name(raw_argv[0] if raw_argv else None)
     parser = _build_base_parser()
     if not raw_argv:
-        code = _show_welcome()
+        update_info = _maybe_check_for_update()
+        code = _show_welcome(update_info)
         return _analytics_exit(command="welcome", started_at=started_at, exit_code=code)
 
     # UX shorthand: allow `opastro logger --limit 5` to behave like
@@ -3539,6 +4234,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         analytics_command = _canonical_command_name(
             getattr(args, "command", analytics_command)
         )
+        update_info = _maybe_check_for_update(
+            no_update_check=getattr(args, "no_update_check", False),
+            force_update_check=getattr(args, "force_update_check", False),
+        )
+        args.update_info = update_info
+        notice = update_notice(update_info) if update_info else None
+        if notice and analytics_command not in {"ui", "welcome"}:
+            print(notice, file=sys.stderr)
         if hasattr(args, "handler"):
             code = int(args.handler(args))
             return _analytics_exit(
@@ -3550,6 +4253,14 @@ def main(argv: Optional[list[str]] = None) -> int:
             started_at=started_at,
             exit_code=2,
             failure_category="unsupported_command",
+        )
+    except KeyboardInterrupt:
+        print("Cancelled.", file=sys.stderr)
+        return _analytics_exit(
+            command=analytics_command,
+            started_at=started_at,
+            exit_code=130,
+            failure_category="cancelled",
         )
     except Exception as exc:
         entry = _serialize_runtime_error(raw_argv, exc)

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from itertools import combinations
 from pathlib import Path
 from typing import List, Optional, Tuple
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import swisseph as swe
 
@@ -16,6 +17,8 @@ from .interpretation.rules import load_rules
 from .models import (
     BirthData,
     BirthdayHoroscopeRequest,
+    CelestialEventsRequest,
+    CelestialEventsResponse,
     HoroscopeRequest,
     HoroscopeResponse,
     NatalBirthchartRequest,
@@ -50,6 +53,7 @@ from .models import (
     ZodiacSystem,
     ZODIAC_SIGNS,
     ChartSnapshot,
+    MAX_TRANSIT_RANGE_DAYS,
 )
 
 BIRTHDAY_FACTOR_ALLOWLIST = [
@@ -483,6 +487,22 @@ class HoroscopeService:
             sections=insights,
         )
 
+    def generate_celestial_events(
+        self, request: CelestialEventsRequest
+    ) -> CelestialEventsResponse:
+        """Return the global ephemeris event calendar for a standard period."""
+        ephemeris = self._resolve_ephemeris(request)
+        start, end = self._resolve_period_range(request.period, request.target_date)
+        aggregation = aggregate_period(ephemeris, request.period, start, end)
+        return CelestialEventsResponse(
+            period=request.period,
+            start=start,
+            end=end,
+            events=aggregation.period_events,
+            notable_events=aggregation.notable_events,
+            metrics=aggregation.metrics,
+        )
+
     def generate_natal_birthchart(
         self, request: NatalBirthchartRequest
     ) -> NatalBirthchartResponse:
@@ -549,6 +569,7 @@ class HoroscopeService:
         request: HoroscopeRequest
         | BirthdayHoroscopeRequest
         | PlanetHoroscopeRequest
+        | CelestialEventsRequest
         | NatalBirthchartRequest,
     ) -> EphemerisEngine:
         if (
@@ -622,7 +643,15 @@ class HoroscopeService:
             birth_time = time(hour=hour, minute=minute)
         else:
             birth_time = time(hour=12, minute=0)
-        return datetime.combine(birth.date, birth_time)
+        timezone_name = birth.timezone or self.config.default_timezone
+        try:
+            birth_timezone = ZoneInfo(timezone_name)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(
+                f"Unknown timezone '{timezone_name}'. Use an IANA timezone name."
+            ) from exc
+        local_datetime = datetime.combine(birth.date, birth_time, tzinfo=birth_timezone)
+        return local_datetime.astimezone(timezone.utc).replace(tzinfo=None)
 
     def _coords_tuple(
         self, birth: Optional[BirthData]
@@ -1446,7 +1475,10 @@ class HoroscopeService:
             for position in snap2.positions:
                 if position.name not in FOCUS_PLANETS:
                     continue
-                if position.house == house:
+                if (
+                    self._house_from_cusps(position.longitude, snap1.house_cusps)
+                    == house
+                ):
                     planets_in_house.append(position.name)
             if planets_in_house:
                 overlays.append(
@@ -1523,6 +1555,13 @@ class HoroscopeService:
 
         date_from = request.date_from or date.today()
         date_to = request.date_to or (date_from + timedelta(days=90))
+        span_days = (date_to - date_from).days
+        if span_days < 0:
+            raise ValueError("date_to must be on or after date_from")
+        if span_days > MAX_TRANSIT_RANGE_DAYS:
+            raise ValueError(
+                f"Transit date range cannot exceed {MAX_TRANSIT_RANGE_DAYS} days"
+            )
 
         natal_positions = {
             p.name: p.longitude

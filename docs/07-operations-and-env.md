@@ -21,24 +21,41 @@
 | `OPASTRO_CACHE_PATH` | `~/.cache/opastro/cache.sqlite` | SQLite cache database path when Redis is unavailable |
 | `CONTENT_HEALTHCHECK_DISABLE` | `0` | `1` disables startup content checks |
 | `CONTENT_HEALTHCHECK_FAIL_FAST` | `0` | `1` raises startup error when content checks fail |
-| `PREGEN_TOKEN` | unset | Token guard for `/admin/pregenerate` |
+| `PREGEN_TOKEN` | unset | Required token for `/admin/pregenerate`; endpoint returns `503` when unset |
 | `OPASTRO_ANALYTICS` | `0` | Opt-in local anonymous CLI analytics events (`1` enables) |
 | `OPASTRO_RATE_LIMIT_RPS` | `10` | Requests per second per client/API key |
 | `OPASTRO_RATE_LIMIT_BURST` | `20` | Burst bucket size for rate limiting |
 | `OPASTRO_REQUIRE_API_KEY` | `0` | Set to `1` to enforce `X-API-Key` header validation |
 | `OPASTRO_API_KEYS` | unset | Comma-separated list of valid API keys |
+| `OPASTRO_ASCII` | unset | Use ASCII table and TUI glyphs when set to `1` |
+| `OPASTRO_UPDATE_CHECK` | auto | Set to `0`/`off` to disable checks; `always` bypasses the cache |
+| `OPASTRO_UPDATE_REPOSITORY` | `dakidarts/opastro` | GitHub `owner/repository` used for latest-release lookup |
+| `OPASTRO_UPDATE_CACHE` | `~/.cache/opastro/update-check.json` | Override the local update-check cache path |
+| `OPASTRO_UPDATE_TIMEOUT` | `1.2` seconds | Network timeout for the best-effort release lookup |
 
 ## Cache Behavior
 
 - **Default**: SQLite-backed persistent cache (`cache_ttl_seconds` from `ServiceConfig`, default 3600s)
 - **Redis mode**: enabled when `REDIS_URL` is set
+- **Redis outage**: reads and writes fall back to the configured SQLite cache
 - The SQLite cache survives process restarts and is stored at `~/.cache/opastro/cache.sqlite` by default.
+
+## Birth Time and Timezone Semantics
+
+- `BirthData.time` uses strict `HH:MM` 24-hour input.
+- `BirthData.timezone` must be an IANA timezone name such as `Africa/Douala` or `Europe/Paris`.
+- Birth times are interpreted as local time in that timezone and converted to UTC before Swiss Ephemeris calculations.
+- If no timezone is supplied, `ServiceConfig.default_timezone` (`UTC` by default) is used.
+- Transit requests reject reversed ranges and ranges longer than 366 days.
 
 ## Logging
 
 - All API requests emit structured JSON logs via `StructuredLogger`.
 - Every response includes an `X-Request-Id` header for distributed tracing.
 - Set `X-Request-Id` on incoming requests to propagate trace context.
+
+The CLI also honors `NO_COLOR=1` and `OPASTRO_COLOR=never` for color-free
+static output and TUI attributes.
 
 ## Rate Limiting
 

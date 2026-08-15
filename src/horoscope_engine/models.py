@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, date
+from datetime import date, datetime, timedelta
 from enum import Enum
 from typing import Dict, List, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Period(str, Enum):
@@ -101,6 +102,39 @@ class BirthData(BaseModel):
     )
     coordinates: Optional[Coordinates] = None
     timezone: Optional[str] = None
+
+    @field_validator("time")
+    @classmethod
+    def validate_time(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if (
+            len(normalized) != 5
+            or normalized[2] != ":"
+            or not normalized[:2].isdigit()
+            or not normalized[3:].isdigit()
+        ):
+            raise ValueError("Birth time must use HH:MM 24-hour format")
+        hour = int(normalized[:2])
+        minute = int(normalized[3:])
+        if hour > 23 or minute > 59:
+            raise ValueError("Birth time must use HH:MM 24-hour format")
+        return normalized
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Timezone must be a valid IANA timezone")
+        try:
+            ZoneInfo(normalized)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError("Timezone must be a valid IANA timezone") from exc
+        return normalized
 
 
 class _HoroscopeRequestMixin:
@@ -295,6 +329,7 @@ class BodyPosition(BaseModel):
     house: Optional[int] = None
     retrograde: bool
     ayanamsa_value: float
+    distance_au: Optional[float] = None
 
 
 class Aspect(BaseModel):
@@ -491,6 +526,9 @@ class TransitEvent(BaseModel):
     summary: str
 
 
+MAX_TRANSIT_RANGE_DAYS = 366
+
+
 class TransitTimelineRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -503,6 +541,19 @@ class TransitTimelineRequest(BaseModel):
     node_type: Optional[NodeType] = None
     tenant_id: Optional[str] = Field(default=None, max_length=64)
 
+    @model_validator(mode="after")
+    def validate_date_range(self) -> "TransitTimelineRequest":
+        date_from = self.date_from or date.today()
+        date_to = self.date_to or (date_from + timedelta(days=90))
+        span_days = (date_to - date_from).days
+        if span_days < 0:
+            raise ValueError("date_to must be on or after date_from")
+        if span_days > MAX_TRANSIT_RANGE_DAYS:
+            raise ValueError(
+                f"Transit date range cannot exceed {MAX_TRANSIT_RANGE_DAYS} days"
+            )
+        return self
+
 
 class TransitTimelineResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -512,3 +563,28 @@ class TransitTimelineResponse(BaseModel):
     date_to: date
     events: List[TransitEvent] = Field(default_factory=list)
     event_count: int = 0
+
+
+class CelestialEventsRequest(BaseModel):
+    """Request a global ephemeris event calendar without natal birth data."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    period: Period = Period.MONTHLY
+    target_date: Optional[date] = None
+    zodiac_system: Optional[ZodiacSystem] = None
+    ayanamsa: Optional[AyanamsaSystem] = None
+    house_system: Optional[HouseSystem] = None
+    node_type: Optional[NodeType] = None
+    tenant_id: Optional[str] = Field(default=None, max_length=64)
+
+
+class CelestialEventsResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    period: Period
+    start: datetime
+    end: datetime
+    events: List[PeriodEvent] = Field(default_factory=list)
+    notable_events: List[str] = Field(default_factory=list)
+    metrics: PeriodMetrics
