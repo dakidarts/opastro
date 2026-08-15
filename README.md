@@ -1,22 +1,9 @@
 # OpAstro Engine (Open Core)
 
 <p align="center">
-  <video
-    src="https://res.cloudinary.com/ds64xs2lp/video/upload/v1786835532/opastro-tui_bk4czi.mp4"
-    controls
-    muted
-    loop
-    playsinline
-    preload="metadata"
-    width="720"
-    aria-label="OpAstro terminal UI demo"
-  ></video>
-</p>
-
-<p align="center">
-  <a href="https://opastro.com">Explore OpAstro</a>
-  ·
-  <a href="https://res.cloudinary.com/ds64xs2lp/video/upload/v1786835532/opastro-tui_bk4czi.mp4">Watch the TUI demo</a>
+  <a href="https://opastro.com">
+    <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1775556782/X-COVER_kfq8p8.jpg" alt="OpAstro Banner" />
+  </a>
 </p>
 
 <p align="center">
@@ -643,6 +630,25 @@ print(payload["report_type"], payload["period"], payload["sign"])
 Unlock richer editorial readings and premium API access: [numerologyapi.com](https://numerologyapi.com)
 
 ---
+
+<p align="center">
+  <video
+    src="https://res.cloudinary.com/ds64xs2lp/video/upload/v1786835532/opastro-tui_bk4czi.mp4"
+    controls
+    muted
+    loop
+    playsinline
+    preload="metadata"
+    width="720"
+    aria-label="OpAstro terminal UI demo"
+  ></video>
+</p>
+
+<p align="center">
+  <a href="https://opastro.com">Explore OpAstro</a>
+  ·
+  <a href="https://res.cloudinary.com/ds64xs2lp/video/upload/v1786835532/opastro-tui_bk4czi.mp4">Watch the TUI demo</a>
+</p>
 
 <p align="center">
   ⭐ If you find this project useful, give it a star on <a href="https://github.com/dakidarts/opastro">GitHub</a>!
