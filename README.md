@@ -1,9 +1,22 @@
 # OpAstro Engine (Open Core)
 
 <p align="center">
-  <a href="https://opastro.com">
-    <img src="https://res.cloudinary.com/ds64xs2lp/video/upload/v1786835532/opastro-tui_bk4czi.mp4" alt="OpAstro Banner" />
-  </a>
+  <video
+    src="https://res.cloudinary.com/ds64xs2lp/video/upload/v1786835532/opastro-tui_bk4czi.mp4"
+    controls
+    muted
+    loop
+    playsinline
+    preload="metadata"
+    width="720"
+    aria-label="OpAstro terminal UI demo"
+  ></video>
+</p>
+
+<p align="center">
+  <a href="https://opastro.com">Explore OpAstro</a>
+  ·
+  <a href="https://res.cloudinary.com/ds64xs2lp/video/upload/v1786835532/opastro-tui_bk4czi.mp4">Watch the TUI demo</a>
 </p>
 
 <p align="center">
