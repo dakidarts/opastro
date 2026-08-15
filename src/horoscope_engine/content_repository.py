@@ -9,7 +9,6 @@ from typing import List, Optional, Sequence, Tuple
 
 from .models import Period
 
-
 TIP_KEY_BY_PERIOD = {
     Period.DAILY: "daily_tip",
     Period.WEEKLY: "weekly_tip",

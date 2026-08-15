@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from .cache import CacheProvider
 from .cache_keys import build_cache_key
-from .models import HoroscopeRequest, Period, Section, ZODIAC_SIGNS
+from .models import ZODIAC_SIGNS, HoroscopeRequest, Period, Section
 from .service import HoroscopeService
 
 

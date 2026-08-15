@@ -7,7 +7,7 @@ from html import escape as escape_html
 from io import BytesIO
 from typing import Any, Optional
 
-from .models import NatalBirthchartResponse, ZODIAC_SIGNS
+from .models import ZODIAC_SIGNS, NatalBirthchartResponse
 
 ACCENT_DEFAULT = "#3ddd77"
 SYMBOL_FONT_STACK = (

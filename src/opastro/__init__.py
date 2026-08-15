@@ -9,8 +9,8 @@ This package re-exports the existing `horoscope_engine` implementation so users 
 
 from __future__ import annotations
 
-from importlib import import_module
 import sys
+from importlib import import_module
 from types import ModuleType
 from typing import Iterable
 

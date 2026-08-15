@@ -13,7 +13,6 @@ from .interpretation.renderer import (
 )
 from .models import Period
 
-
 PERIOD_FACTOR_ORDERS: Dict[Period, Sequence[str]] = {
     Period.DAILY: DAILY_FACTOR_ORDER,
     Period.WEEKLY: WEEKLY_FACTOR_ORDER,

@@ -2,18 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 import json
 import os
-from pathlib import Path
 import re
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .versioning import resolve_version
-
 
 DEFAULT_REPOSITORY = "dakidarts/opastro"
 DEFAULT_CACHE_TTL = timedelta(hours=24)

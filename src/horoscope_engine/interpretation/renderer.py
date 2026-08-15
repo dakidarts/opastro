@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import datetime
-import re
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from ..content_repository import V2ContentRepository, stable_index
@@ -16,7 +16,6 @@ from ..models import (
     SectionInsight,
 )
 from .rules import RuleSet
-
 
 WEEKLY_THEMES = [
     "reset_and_refocus",

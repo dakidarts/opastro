@@ -3,7 +3,6 @@ from __future__ import annotations
 from setuptools import setup
 from setuptools.command.sdist import sdist as _sdist
 
-
 _SDIST_EXCLUDE_PREFIXES = (
     "tests/",
     "docs/tasks/",

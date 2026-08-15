@@ -11,12 +11,11 @@ import swisseph as swe
 from .config import EphemerisConfig
 from .models import (
     ArabicPartPosition,
+    Aspect,
     BodyPosition,
     ChartSnapshot,
-    Aspect,
     FixedStarPosition,
 )
-
 
 logger = logging.getLogger(__name__)
 SWE_LOCK = threading.Lock()

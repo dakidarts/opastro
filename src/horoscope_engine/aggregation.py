@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 
 from .ephemeris import EphemerisEngine
-from .models import Period, PeriodEvent, PeriodMetrics, ChartSnapshot
+from .models import ChartSnapshot, Period, PeriodEvent, PeriodMetrics
 
 
 @dataclass

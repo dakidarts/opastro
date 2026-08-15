@@ -8,19 +8,18 @@ and a perspective grid.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import hashlib
-from html import escape
 import json
 import math
-from pathlib import Path
 import random
 import subprocess
 import tempfile
+from datetime import datetime, timezone
+from html import escape
+from pathlib import Path
 from typing import Any
 
 from .models import BodyPosition, ChartSnapshot
-
 
 # ---------------------------------------------------------------------------
 # Theme colour palettes

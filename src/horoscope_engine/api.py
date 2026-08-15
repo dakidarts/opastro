@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
-from io import BytesIO
 import json
 import logging
 import os
-from pathlib import Path
 import zipfile
+from contextlib import asynccontextmanager
+from io import BytesIO
+from pathlib import Path
 from secrets import compare_digest
 
-from fastapi import FastAPI, HTTPException, Header, Query, Request
-from fastapi.responses import Response, JSONResponse
+from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, Response
 from starlette.concurrency import run_in_threadpool
 
 from .cache import cache_from_env
@@ -35,23 +35,22 @@ from .models import (
     TransitTimelineResponse,
 )
 from .natal_artifacts import (
+    build_house_overlay_map,
     build_natal_report_pdf,
     build_natal_wheel_png,
     build_natal_wheel_png_split,
     build_natal_wheel_svg,
     build_natal_wheel_svg_split,
-    build_house_overlay_map,
 )
 from .observability import (
     MetricsCollector,
-    Timer,
     StructuredLogger,
+    Timer,
     generate_request_id,
 )
 from .pregen import pregenerate
 from .service import HoroscopeService
 from .versioning import resolve_version
-
 
 logger = logging.getLogger(__name__)
 structured_log = StructuredLogger("opastro.api")

@@ -7,17 +7,12 @@ try:
     import curses
 except ImportError:  # pragma: no cover - exercised on platforms without curses
     curses = None
-from contextlib import redirect_stdout
-from datetime import date, datetime, timedelta, timezone
 import difflib
-from html import escape as html_escape
 import hashlib
 import importlib
-from io import StringIO
 import json
 import os
 import platform
-from pathlib import Path
 import re
 import shutil
 import subprocess
@@ -25,12 +20,23 @@ import sys
 import textwrap
 import time
 import traceback
+from contextlib import redirect_stdout
+from datetime import date, datetime, timedelta, timezone
+from html import escape as html_escape
+from io import StringIO
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 import uvicorn
 
 from .config import ServiceConfig
+from .ephemeris import MINOR_BODIES, EphemerisEngine
+from .ephemeris_downloader import (
+    ensure_minor_body_ephemeris,
+    missing_ephemeris_files,
+)
 from .models import (
+    ZODIAC_SIGNS,
     BirthData,
     BirthdayHoroscopeRequest,
     CelestialEventsRequest,
@@ -41,7 +47,6 @@ from .models import (
     PlanetHoroscopeRequest,
     PlanetName,
     Section,
-    ZODIAC_SIGNS,
 )
 from .natal_artifacts import (
     build_house_overlay_map,
@@ -51,13 +56,8 @@ from .natal_artifacts import (
     build_natal_wheel_svg,
     build_natal_wheel_svg_split,
 )
-from .ephemeris import EphemerisEngine, MINOR_BODIES
-from .ephemeris_downloader import (
-    ensure_minor_body_ephemeris,
-    missing_ephemeris_files,
-)
-from .scene_renderer import build_planetary_scene_svg, build_planetary_scene_png
 from .profiles import DEFAULT_PROFILE_NAME, ProfileStore
+from .scene_renderer import build_planetary_scene_png, build_planetary_scene_svg
 from .service import HoroscopeService
 from .update_checker import UpdateCheckResult, check_for_update, update_notice
 from .versioning import resolve_version
