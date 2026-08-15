@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import ssl
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -11,11 +12,28 @@ logger = logging.getLogger(__name__)
 # Astro.com hosts the Swiss Ephemeris data files.
 EPHE_BASE_URL = "https://www.astro.com/swisseph/ephe/"
 
-# Files required for optional minor bodies / fixed stars.
-OPTIONAL_EPHE_FILES = {
+# Files that can be fetched from the public Astro.com ephemeris directory.
+DOWNLOADABLE_EPHE_FILES = {
     "seas_18.se1": "Asteroid / dwarf planet data (Eris, Chiron backup, etc.)",
-    "sefstars.txt": "Fixed star catalogue",
 }
+
+# Swiss Ephemeris fixed-star calculations use this catalogue, but it is not
+# available at the public Astro.com directory used by the downloader.
+MANUAL_EPHE_FILES = {
+    "sefstars.txt": "Fixed star catalogue (manual installation)",
+}
+
+# Keep one complete inventory for doctor output and backwards compatibility
+# with callers that imported OPTIONAL_EPHE_FILES.
+OPTIONAL_EPHE_FILES = {**DOWNLOADABLE_EPHE_FILES, **MANUAL_EPHE_FILES}
+
+
+@dataclass(frozen=True)
+class EphemerisDownloadReport:
+    """Result of an optional ephemeris download attempt."""
+
+    downloaded: list[Path]
+    missing_downloadable: dict[str, str]
 
 
 def _ensure_ssl_context() -> ssl.SSLContext:
@@ -80,9 +98,17 @@ def download_ephemeris_file(
 def ensure_minor_body_ephemeris(
     ephemeris_path: Optional[str] = None,
 ) -> list[Path]:
-    """Download ``seas_18.se1`` if it is missing.
+    """Download supported optional files and return downloaded paths."""
+    return ensure_minor_body_ephemeris_report(ephemeris_path).downloaded
 
-    Returns a list of files that were downloaded (empty if nothing was needed).
+
+def ensure_minor_body_ephemeris_report(
+    ephemeris_path: Optional[str] = None,
+) -> EphemerisDownloadReport:
+    """Download supported optional files and report any remaining gaps.
+
+    Fixed-star data is intentionally excluded from the automatic download
+    list because the configured public source does not host ``sefstars.txt``.
     """
     if ephemeris_path:
         dest = Path(ephemeris_path).expanduser()
@@ -90,7 +116,7 @@ def ensure_minor_body_ephemeris(
         dest = Path.home() / ".cache" / "opastro" / "ephemeris"
 
     downloaded: list[Path] = []
-    for filename, description in OPTIONAL_EPHE_FILES.items():
+    for filename, description in DOWNLOADABLE_EPHE_FILES.items():
         target = dest / filename
         if not target.exists():
             try:
@@ -100,7 +126,15 @@ def ensure_minor_body_ephemeris(
                 logger.warning(
                     "Could not download %s (%s): %s", filename, description, exc
                 )
-    return downloaded
+    missing_downloadable = {
+        filename: description
+        for filename, description in DOWNLOADABLE_EPHE_FILES.items()
+        if not (dest / filename).exists()
+    }
+    return EphemerisDownloadReport(
+        downloaded=downloaded,
+        missing_downloadable=missing_downloadable,
+    )
 
 
 def missing_ephemeris_files(ephemeris_path: Optional[str] = None) -> dict[str, str]:

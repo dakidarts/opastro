@@ -109,10 +109,24 @@ opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-
 ### Interactive UI
 
 ```bash
+opastro ui
+```
+
+With no period, `opastro ui` opens the animated home deck. Use `/` to search
+the complete command surface and `@` to browse OpAstro, documentation, and
+premium CTAs. Press `h` or `?` for the in-context control panel. Use
+`--period` to open the report browser:
+
+```bash
 opastro ui --period daily --sign ARIES --target-date 2026-04-03
 ```
 
 Controls:
+- `/` command palette on the home deck
+- `@` links and CTA palette on the home deck
+- `o` open the selected CTA in a browser
+- `h` / `?` home-deck help panel
+- `c` clear the active home palette search
 - `↑↓` / `j,k` section navigation
 - `enter` toggle factor drill-down
 - `pgup` / `pgdn` content scroll

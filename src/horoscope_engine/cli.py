@@ -13,6 +13,7 @@ import importlib
 import json
 import os
 import platform
+import random
 import re
 import shutil
 import subprocess
@@ -20,6 +21,7 @@ import sys
 import textwrap
 import time
 import traceback
+import webbrowser
 from contextlib import redirect_stdout
 from datetime import date, datetime, timedelta, timezone
 from html import escape as html_escape
@@ -32,7 +34,9 @@ import uvicorn
 from .config import ServiceConfig
 from .ephemeris import MINOR_BODIES, EphemerisEngine
 from .ephemeris_downloader import (
-    ensure_minor_body_ephemeris,
+    DOWNLOADABLE_EPHE_FILES,
+    MANUAL_EPHE_FILES,
+    ensure_minor_body_ephemeris_report,
     missing_ephemeris_files,
 )
 from .models import (
@@ -154,6 +158,10 @@ class _UIState:
     filter_query: str = ""
     filter_requested: bool = False
     compact: bool = False
+    home_palette: Optional[str] = None
+    home_action_requested: bool = False
+    home_open_requested: bool = False
+    home_message: str = ""
 
 
 @dataclass(frozen=True)
@@ -179,6 +187,104 @@ class _UIEventsPayload:
     sign: str
     sections: list[_UIEventSection]
     response: Any
+
+
+_UI_HOME_COMMANDS = (
+    (
+        "init",
+        "Create a reusable profile and starter configuration.",
+        "opastro init --template natal",
+    ),
+    (
+        "profile",
+        "Save, inspect, and activate reusable report profiles.",
+        "opastro profile list",
+    ),
+    (
+        "horoscope",
+        "Generate a daily, weekly, monthly, or yearly reading.",
+        "opastro horoscope --period daily --sign ARIES",
+    ),
+    (
+        "birthday",
+        "Generate a birthday-cycle report.",
+        "opastro birthday --sign ARIES",
+    ),
+    (
+        "planet",
+        "Focus a report on one planet across a chosen period.",
+        "opastro planet --period daily --planet mars --sign ARIES",
+    ),
+    (
+        "natal",
+        "Build a personalized birth chart and visual report.",
+        "opastro natal --help",
+    ),
+    (
+        "events",
+        "Explore the global celestial calendar.",
+        "opastro events --period monthly",
+    ),
+    (
+        "explain",
+        "Trace the factors behind every rendered section line.",
+        "opastro explain --kind horoscope --period daily --sign ARIES",
+    ),
+    (
+        "doctor",
+        "Check runtime, dependencies, and ephemeris readiness.",
+        "opastro doctor",
+    ),
+    (
+        "logger",
+        "Inspect local runtime errors and suggested fixes.",
+        "opastro logger show --limit 5",
+    ),
+    (
+        "catalog",
+        "Browse supported signs, planets, periods, and sections.",
+        "opastro catalog",
+    ),
+    (
+        "completion",
+        "Print bash, zsh, or fish shell completion scripts.",
+        "opastro completion --shell zsh",
+    ),
+    (
+        "batch",
+        "Generate reports across signs and dates.",
+        "opastro batch --help",
+    ),
+    (
+        "render",
+        "Create planetary scenes and visual exports.",
+        "opastro render --help",
+    ),
+    (
+        "serve",
+        "Run the local FastAPI integration server.",
+        "opastro serve --help",
+    ),
+    (
+        "ui",
+        "Open this home deck or the interactive report browser.",
+        "opastro ui",
+    ),
+)
+
+_UI_HOME_CTAS = (
+    ("website", "Explore the OpAstro CLI platform.", "https://opastro.com"),
+    (
+        "premium",
+        "Unlock richer readings and editorial depth.",
+        "https://numerologyapi.com",
+    ),
+    (
+        "docs",
+        "Read the open-core quickstart and API guides.",
+        "https://github.com/dakidarts/opastro/tree/main/docs",
+    ),
+)
 
 
 def _app_version() -> str:
@@ -322,7 +428,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
     doctor.add_argument(
         "--download-ephemeris",
         action="store_true",
-        help="Download optional Swiss Ephemeris files (Eris, fixed stars, etc.).",
+        help="Download supported optional asteroid/dwarf-body ephemeris files.",
     )
     doctor.set_defaults(handler=_handle_doctor)
 
@@ -614,7 +720,7 @@ def _build_base_parser() -> argparse.ArgumentParser:
     ui.add_argument(
         "--period",
         choices=["daily", "weekly", "monthly", "yearly"],
-        help="Report period; required for horoscope/planet and optional for events.",
+        help="Report period; omit it for the interactive home deck.",
     )
     _add_common_report_args(ui, require_period=False)
     ui.add_argument(
@@ -2312,7 +2418,7 @@ def _show_welcome(update_info: UpdateCheckResult | None = None) -> int:
         print(_style(notice, "1;33"))
     print(
         _wrap(
-            "Enterprise-grade deterministic calculations with lightweight open meanings and premium-ready API hooks."
+            "Enterprise-grade deterministic calculations with lightweight open meanings."
         )
     )
     _print_divider()
@@ -2342,7 +2448,7 @@ def _show_welcome(update_info: UpdateCheckResult | None = None) -> int:
     print(_wrap("opastro init", indent="  "))
     print(
         _wrap(
-            "opastro horoscope --period daily --sign ARIES --target-date 2026-04-03",
+            "opastro horoscope --period daily --sign ARIES --target-date 2026-08-17",
             indent="  ",
         )
     )
@@ -2543,38 +2649,93 @@ def _handle_doctor(args: argparse.Namespace) -> int:
 
     # Ephemeris health check
     ephe_missing = missing_ephemeris_files(cfg.ephemeris.ephemeris_path)
+    downloadable_missing = {
+        filename: description
+        for filename, description in DOWNLOADABLE_EPHE_FILES.items()
+        if filename in ephe_missing
+    }
+    manual_missing = {
+        filename: description
+        for filename, description in MANUAL_EPHE_FILES.items()
+        if filename in ephe_missing
+    }
+    ephemeris_dir = (
+        Path(cfg.ephemeris.ephemeris_path).expanduser()
+        if cfg.ephemeris.ephemeris_path
+        else Path.home() / ".cache" / "opastro" / "ephemeris"
+    )
     minor_names = [b.name for b in MINOR_BODIES]
     payload["minor_bodies_available"] = minor_names
     payload["ephemeris_files_missing"] = ephe_missing
+    payload["ephemeris_files_downloadable"] = downloadable_missing
+    payload["ephemeris_files_manual"] = manual_missing
+    payload["fixed_star_catalogue"] = {
+        "available": "sefstars.txt" not in manual_missing,
+        "optional": True,
+        "path": str(ephemeris_dir / "sefstars.txt"),
+        "required_for": "include_fixed_stars",
+    }
 
     if not args.json:
         print(f"Minor bodies   : {', '.join(minor_names) if minor_names else 'none'}")
         if ephe_missing:
+            status = "MISSING"
+            if not downloadable_missing and manual_missing:
+                status = "OPTIONAL MISSING"
             print(
                 _style(
-                    f"Ephemeris files: MISSING ({', '.join(ephe_missing)})",
+                    f"Ephemeris files: {status} ({', '.join(ephe_missing)})",
                     "1;33",
                 )
             )
-            print(
-                "Recommendation : Run `opastro doctor --download-ephemeris` to fetch optional files."
-            )
+            if downloadable_missing:
+                print(
+                    "Recommendation : Run `opastro doctor --download-ephemeris` to fetch supported optional files."
+                )
+            if manual_missing:
+                print(
+                    "Fixed stars    : Install `sefstars.txt` manually and point `SE_EPHE_PATH` at its directory."
+                )
+            else:
+                print(_style("Fixed stars    : OK", "1;32"))
         else:
             print(_style("Ephemeris files: OK", "1;32"))
+            print(_style("Fixed stars    : OK", "1;32"))
 
     if args.download_ephemeris:
         if not args.json:
             _print_heading("Downloading Ephemeris Files")
         try:
-            downloaded = ensure_minor_body_ephemeris(cfg.ephemeris.ephemeris_path)
+            download_report = ensure_minor_body_ephemeris_report(
+                cfg.ephemeris.ephemeris_path
+            )
+            downloaded = download_report.downloaded
             payload["downloaded"] = [str(p) for p in downloaded]
+            payload["downloadable_files_missing_after_download"] = (
+                download_report.missing_downloadable
+            )
+            payload["ephemeris_files_missing_after_download"] = missing_ephemeris_files(
+                cfg.ephemeris.ephemeris_path
+            )
             if not args.json:
                 if downloaded:
                     for path in downloaded:
                         print(f"  Downloaded   : {path}")
+                if download_report.missing_downloadable:
+                    print(
+                        _style(
+                            "Download result: INCOMPLETE (supported files still missing).",
+                            "1;33",
+                        )
+                    )
+                elif downloaded:
                     print(_style("Download result: OK", "1;32"))
                 else:
-                    print("Download result: All required files already present.")
+                    print("Download result: No supported files needed downloading.")
+                if manual_missing:
+                    print(
+                        "Fixed-star note : `sefstars.txt` is not auto-downloaded; install it manually for fixed-star output."
+                    )
         except Exception as exc:
             payload["download_error"] = str(exc)
             if not args.json:
@@ -3359,6 +3520,30 @@ def _filter_ui_sections(sections: list[Any], query: str) -> list[Any]:
     ]
 
 
+def _filter_home_items(palette: str, query: str) -> tuple[tuple[str, str, str], ...]:
+    items = _UI_HOME_COMMANDS if palette == "commands" else _UI_HOME_CTAS
+    tokens = query.strip().casefold().split()
+    if not tokens:
+        return items
+    return tuple(
+        item
+        for item in items
+        if all(_home_query_matches(item, palette, token) for token in tokens)
+    )
+
+
+def _home_query_matches(
+    item: tuple[str, str, str], palette: str, query_token: str
+) -> bool:
+    values = (
+        (*item, *COMMAND_ALIASES.get(item[0], ())) if palette == "commands" else item
+    )
+    words = set(re.findall(r"[a-z0-9_]+", " ".join(values).casefold()))
+    if query_token in words:
+        return True
+    return len(query_token) >= 2 and any(query_token in word for word in words)
+
+
 def _apply_ui_key(
     state: _UIState,
     key: int,
@@ -3367,6 +3552,7 @@ def _apply_ui_key(
     page_height: int,
     curses_module: Any = None,
     allow_period_switch: bool = True,
+    home_mode: bool = False,
 ) -> bool:
     """Apply one keypress and return whether the UI should keep running."""
     keys = curses_module or curses
@@ -3377,7 +3563,47 @@ def _apply_ui_key(
     key_previous_page = getattr(keys, "KEY_PPAGE", -1005)
     step = max(1, page_height - 2)
 
-    if key in (ord("q"), 27):
+    if key == ord("q"):
+        return False
+    if home_mode:
+        if key == 27:
+            if state.help_visible:
+                state.help_visible = False
+                return True
+            if state.home_palette:
+                state.home_palette = None
+                state.filter_query = ""
+                state.selected = 0
+                state.home_message = ""
+                return True
+            return False
+        if key in (ord("/"), ord("@")):
+            state.home_palette = "commands" if key == ord("/") else "cta"
+            state.filter_query = ""
+            state.selected = 0
+            state.home_message = ""
+            state.filter_requested = True
+            return True
+        if key in (ord("?"), ord("h")):
+            state.help_visible = not state.help_visible
+            state.home_message = ""
+            return True
+        if key == ord("c") and state.home_palette:
+            state.filter_query = ""
+            state.selected = 0
+            state.home_message = ""
+            return True
+        if key == ord("o") and state.home_palette == "cta" and section_count:
+            state.home_open_requested = True
+            return True
+        if key in (key_up, ord("k")) and section_count:
+            state.selected = (state.selected - 1) % section_count
+        elif key in (key_down, ord("j")) and section_count:
+            state.selected = (state.selected + 1) % section_count
+        elif key in (10, 13, key_enter) and section_count:
+            state.home_action_requested = True
+        return True
+    if key in (27,):
         return False
     if key == ord("/"):
         state.filter_requested = True
@@ -3472,9 +3698,11 @@ def _render_ui_fallback(
     )
 
 
-def _prompt_ui_filter(stdscr, state: _UIState, theme: dict[str, int]) -> None:
+def _prompt_ui_filter(
+    stdscr, state: _UIState, theme: dict[str, int], prompt: str | None = None
+) -> None:
     height, width = stdscr.getmaxyx()
-    prompt = "Filter sections (Enter apply, Esc cancel): "
+    prompt = prompt or "Filter sections (Enter apply, Esc cancel): "
     prompt_x = min(len(prompt), max(0, width - 1))
     max_len = max(1, width - prompt_x - 1)
     previous = state.filter_query
@@ -3502,6 +3730,386 @@ def _prompt_ui_filter(stdscr, state: _UIState, theme: dict[str, int]) -> None:
             pass
     state.selected = 0
     state.scroll_offset = 0
+
+
+def _home_payload() -> dict[str, Any]:
+    return {
+        "mode": "home",
+        "version": _app_version(),
+        "commands": [
+            {
+                "name": name,
+                "aliases": COMMAND_ALIASES.get(name, []),
+                "description": description,
+                "example": example,
+            }
+            for name, description, example in _UI_HOME_COMMANDS
+        ],
+        "ctas": [
+            {"name": name, "description": description, "target": target}
+            for name, description, target in _UI_HOME_CTAS
+        ],
+    }
+
+
+def _render_ui_home_text() -> str:
+    lines = [
+        WELCOME_BANNER.strip("\n"),
+        f"Open Core Horoscope Engine • {_app_version()}".center(_term_width()),
+        "A small command deck for exploring deterministic celestial calculations.",
+        "",
+        "Commands",
+    ]
+    lines.extend(
+        f"  {name:<10} {description}" for name, description, _ in _UI_HOME_COMMANDS
+    )
+    lines.extend(
+        [
+            "",
+            "Shortcuts",
+            "  /          Search commands",
+            "  @          Explore website, docs, and premium CTAs",
+            "  h / ?      Show home controls",
+            "  q / Esc    Quit",
+            "",
+            "→ https://opastro.com",
+            "→ https://numerologyapi.com",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _render_ui_home_fallback(
+    args: argparse.Namespace,
+    reason: str,
+    update_info: UpdateCheckResult | None = None,
+) -> int:
+    print(f"UI home fallback: {reason}.", file=sys.stderr)
+    notice = update_notice(update_info) if update_info else None
+    if notice:
+        print(notice, file=sys.stderr)
+    rendered = _render_ui_home_text()
+    if args.export:
+        target = _save_export(rendered, args.export)
+        print(f"saved output to {target}", file=sys.stderr)
+    else:
+        print(rendered, end="")
+    return 0
+
+
+def _run_ui_home(
+    *,
+    ascii_mode: bool = False,
+    update_info: UpdateCheckResult | None = None,
+) -> int:
+    if curses is None:
+        raise RuntimeError("curses is unavailable on this platform")
+
+    def _ui(stdscr) -> None:
+        def _safe_add(y: int, x: int, text: str, max_len: int, attr: int = 0) -> None:
+            if max_len <= 0 or y < 0 or x < 0:
+                return
+            try:
+                stdscr.addnstr(y, x, text, max_len, attr)
+            except curses.error:
+                pass
+
+        def _init_theme() -> dict[str, int]:
+            theme = {
+                "header": curses.A_BOLD,
+                "accent": curses.A_BOLD,
+                "selected": curses.A_REVERSE | curses.A_BOLD,
+                "muted": curses.A_DIM,
+                "body": curses.A_NORMAL,
+                "background": curses.A_NORMAL,
+                "subtle": curses.A_DIM,
+                "glow": curses.A_BOLD,
+            }
+            if not _should_colorize() or not curses.has_colors():
+                return theme
+            try:
+                curses.start_color()
+                curses.use_default_colors()
+                curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)
+                curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_GREEN)
+                curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)
+                curses.init_pair(4, curses.COLOR_CYAN, curses.COLOR_BLACK)
+                curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_GREEN)
+                theme["header"] = curses.color_pair(1) | curses.A_BOLD
+                theme["accent"] = curses.color_pair(1) | curses.A_BOLD
+                theme["selected"] = curses.color_pair(2) | curses.A_BOLD
+                theme["muted"] = curses.color_pair(4)
+                theme["body"] = curses.color_pair(3)
+                theme["background"] = curses.color_pair(3)
+                theme["subtle"] = curses.color_pair(3) | curses.A_DIM
+                theme["glow"] = curses.color_pair(5) | curses.A_BOLD
+            except curses.error:
+                return theme
+            return theme
+
+        curses.curs_set(0)
+        stdscr.keypad(True)
+        timeout = getattr(stdscr, "timeout", None)
+        if timeout:
+            timeout(120)
+        theme = _init_theme()
+        background = getattr(stdscr, "bkgd", None)
+        if background is not None:
+            background(" ", theme["background"])
+        state = _UIState()
+        glyphs = _ui_glyphs(ascii_mode=ascii_mode)
+        glow_rng = random.Random()
+        next_glow_at = time.monotonic() + glow_rng.uniform(8.0, 10.0)
+        glow_started_at: float | None = None
+        glow_duration = 1.6
+        frame = 0
+
+        while True:
+            stdscr.erase()
+            height, width = stdscr.getmaxyx()
+            now = time.monotonic()
+            if glow_started_at is None and now >= next_glow_at:
+                glow_started_at = now
+            elif glow_started_at is not None and now - glow_started_at > glow_duration:
+                glow_started_at = None
+                next_glow_at = now + glow_rng.uniform(8.0, 10.0)
+            palette = state.home_palette
+            items = (
+                _filter_home_items(palette, state.filter_query)
+                if palette
+                else _UI_HOME_COMMANDS
+            )
+            if items:
+                state.selected = min(state.selected, len(items) - 1)
+            else:
+                state.selected = 0
+
+            # A deterministic starfield keeps the home screen animated without
+            # introducing randomness into screenshots or terminal recordings.
+            logo = WELCOME_BANNER.strip("\n").splitlines()
+            art_pixels = [
+                (row, char_x)
+                for row, line in enumerate(logo)
+                for char_x, char in enumerate(line)
+                if char != " "
+            ]
+            glow_pixels: set[tuple[int, int]] = set()
+            if glow_started_at is not None:
+                progress = min(1.0, (now - glow_started_at) / glow_duration)
+                pixel_index = round(progress * max(0, len(art_pixels) - 1))
+                for offset in (-1, 0, 1):
+                    candidate = pixel_index + offset
+                    if 0 <= candidate < len(art_pixels):
+                        glow_pixels.add(art_pixels[candidate])
+
+            star_chars = ".+*"
+            for index in range(42):
+                star_x = (index * 37 + 11) % max(1, width)
+                star_y = 2 + ((index * 17 + frame // 8) % max(1, height - 4))
+                if star_y < height - 1:
+                    star = star_chars[(index + frame // 5) % len(star_chars)]
+                    _safe_add(star_y, star_x, star, 1, theme["muted"])
+
+            logo_start = 2
+            for row, line in enumerate(logo):
+                logo_x = max(0, (width - len(line)) // 2)
+                _safe_add(
+                    logo_start + row,
+                    logo_x,
+                    line,
+                    max(1, width - logo_x - 1),
+                    theme["accent"],
+                )
+                for char_x, char in enumerate(line):
+                    if (row, char_x) in glow_pixels:
+                        _safe_add(
+                            logo_start + row,
+                            logo_x + char_x,
+                            char,
+                            1,
+                            theme["glow"],
+                        )
+
+            title_y = min(height - 2, logo_start + len(logo) + 1)
+            title = f"Open Core Horoscope Engine {glyphs['bullet']} {_app_version()}"
+            title_x = max(0, (width - len(title)) // 2)
+            _safe_add(
+                title_y,
+                title_x,
+                title,
+                max(1, width - title_x - 1),
+                theme["header"],
+            )
+
+            content_y = title_y + 3
+            if state.help_visible and content_y < height - 2:
+                help_lines = (
+                    "Home deck controls",
+                    "↑↓ / j / k       Move through the selected palette",
+                    "/                 Search every OpAstro command",
+                    "@                 Browse website, docs, and premium links",
+                    "Enter             Select an item and reveal its next step",
+                    "o                 Open the selected CTA in your browser",
+                    "c                 Clear the active palette search",
+                    "h / ?             Toggle this help panel",
+                    "Esc               Close the panel or palette",
+                    "q                 Quit",
+                )
+                for row, line in enumerate(help_lines):
+                    if content_y + row >= height - 2:
+                        break
+                    _safe_add(
+                        content_y + row,
+                        2,
+                        line,
+                        max(1, width - 3),
+                        theme["accent"] if row == 0 else theme["body"],
+                    )
+            elif content_y < height - 2 and not palette:
+                left_x = 2
+                right_x = max(width // 2, 42)
+                _safe_add(
+                    content_y,
+                    left_x,
+                    "COMMAND DECK",
+                    max(1, right_x - left_x - 2),
+                    theme["accent"],
+                )
+                _safe_add(
+                    content_y,
+                    right_x,
+                    "NEXT ORBIT",
+                    max(1, width - right_x - 1),
+                    theme["accent"],
+                )
+                for row, (name, description, _) in enumerate(_UI_HOME_COMMANDS):
+                    y = content_y + 2 + row
+                    if y >= height - 2:
+                        break
+                    _safe_add(
+                        y,
+                        left_x,
+                        f"{name:<10}",
+                        max(1, right_x - left_x - 2),
+                        theme["body"],
+                    )
+                    _safe_add(
+                        y,
+                        right_x,
+                        description,
+                        max(1, width - right_x - 1),
+                        theme["subtle"],
+                    )
+                for row, (name, description, _) in enumerate(_UI_HOME_CTAS):
+                    y = content_y + 2 + row
+                    if y >= height - 2:
+                        break
+                    _safe_add(
+                        y,
+                        right_x,
+                        f"@ {name:<8} {description}",
+                        max(1, width - right_x - 1),
+                        theme["subtle"],
+                    )
+                _safe_add(
+                    content_y + 9,
+                    left_x,
+                    "Press / to search commands or @ to open useful links.",
+                    max(1, width - 3),
+                    theme["muted"],
+                )
+            elif content_y < height - 2:
+                palette_label = (
+                    "COMMAND PALETTE /" if palette == "commands" else "ORBIT PALETTE @"
+                )
+                _safe_add(
+                    content_y, 2, palette_label, max(1, width - 3), theme["accent"]
+                )
+                _safe_add(
+                    content_y + 1,
+                    2,
+                    "Type a filter, then Enter. Esc closes the palette.",
+                    max(1, width - 3),
+                    theme["muted"],
+                )
+                for row, (name, description, target) in enumerate(items):
+                    y = content_y + 3 + row
+                    if y >= height - 3:
+                        break
+                    marker = glyphs["marker"] if row == state.selected else " "
+                    detail = target
+                    _safe_add(
+                        y,
+                        2,
+                        f"{marker} {name:<12} {detail}",
+                        max(1, width - 3),
+                        theme["selected"] if row == state.selected else theme["body"],
+                    )
+                if state.home_message:
+                    _safe_add(
+                        height - 3,
+                        2,
+                        state.home_message,
+                        max(1, width - 3),
+                        theme["accent"],
+                    )
+
+            if update_info and height > 2:
+                _safe_add(
+                    height - 2,
+                    2,
+                    update_notice(update_info) or "",
+                    max(1, width - 3),
+                    theme["muted"],
+                )
+            footer = "↑↓/j/k select  / commands  @ links & CTAs  Enter choose  o open  q/Esc quit"
+            _safe_add(height - 1, 0, footer, max(1, width - 1), theme["muted"])
+            stdscr.refresh()
+            key = stdscr.getch()
+            if key == -1:
+                frame += 1
+                continue
+            if not _apply_ui_key(
+                state,
+                key,
+                section_count=len(items),
+                page_height=max(1, height - content_y - 4),
+                home_mode=True,
+            ):
+                break
+            if state.filter_requested:
+                state.filter_requested = False
+                prompt = (
+                    "Search commands (Enter apply): "
+                    if state.home_palette == "commands"
+                    else "Search links and CTAs (Enter apply): "
+                )
+                _prompt_ui_filter(stdscr, state, theme, prompt=prompt)
+            if state.home_action_requested:
+                state.home_action_requested = False
+                chosen = _filter_home_items(
+                    state.home_palette or "commands", state.filter_query
+                )
+                if chosen and state.selected < len(chosen):
+                    name, description, target = chosen[state.selected]
+                    state.home_message = f"Selected {name}: {target}"
+            if state.home_open_requested:
+                state.home_open_requested = False
+                chosen = _filter_home_items("cta", state.filter_query)
+                if chosen and state.selected < len(chosen):
+                    name, _, target = chosen[state.selected]
+                    try:
+                        opened = webbrowser.open(target)
+                    except Exception:
+                        opened = False
+                    state.home_message = (
+                        f"Opened {name}: {target}"
+                        if opened
+                        else f"Could not open {target}; use the URL directly."
+                    )
+
+    curses.wrapper(_ui)
+    return 0
 
 
 def _run_ui(
@@ -3538,23 +4146,25 @@ def _run_ui(
                 "selected": curses.A_REVERSE | curses.A_BOLD,
                 "muted": curses.A_DIM,
                 "body": curses.A_NORMAL,
+                "background": curses.A_NORMAL,
             }
             if not _should_colorize() or not curses.has_colors():
                 return theme
             try:
                 curses.start_color()
                 curses.use_default_colors()
-                curses.init_pair(1, curses.COLOR_GREEN, -1)  # accent
+                curses.init_pair(1, curses.COLOR_GREEN, curses.COLOR_BLACK)  # accent
                 curses.init_pair(
                     2, curses.COLOR_BLACK, curses.COLOR_GREEN
                 )  # selected row
-                curses.init_pair(3, curses.COLOR_WHITE, -1)  # body
-                curses.init_pair(4, curses.COLOR_CYAN, -1)  # meta
+                curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)  # body
+                curses.init_pair(4, curses.COLOR_CYAN, curses.COLOR_BLACK)  # meta
                 theme["header"] = curses.color_pair(1) | curses.A_BOLD
                 theme["accent"] = curses.color_pair(1) | curses.A_BOLD
                 theme["selected"] = curses.color_pair(2) | curses.A_BOLD
                 theme["muted"] = curses.color_pair(4)
                 theme["body"] = curses.color_pair(3)
+                theme["background"] = curses.color_pair(3)
             except curses.error:
                 return theme
             return theme
@@ -3562,6 +4172,9 @@ def _run_ui(
         curses.curs_set(0)
         stdscr.keypad(True)
         theme = _init_theme()
+        background = getattr(stdscr, "bkgd", None)
+        if background is not None:
+            background(" ", theme["background"])
         state = _UIState()
         glyphs = _ui_glyphs(ascii_mode=ascii_mode)
 
@@ -3796,6 +4409,42 @@ def _handle_ui(args: argparse.Namespace) -> int:
         or getattr(args, "output_format", None) is not None
     )
     _apply_profile_defaults(args)
+
+    # `opastro ui` without a report period is the interactive home deck. A
+    # supplied period keeps the existing report browser contract unchanged.
+    if not args.period and args.kind == "horoscope":
+        if getattr(args, "json", False):
+            print(json.dumps(_home_payload(), indent=2, sort_keys=True))
+            return 0
+        if args.no_interactive or getattr(args, "output_format", None) is not None:
+            reason = (
+                "static output requested"
+                if explicit_output_requested
+                else "--no-interactive"
+            )
+            return _render_ui_home_fallback(
+                args, reason, getattr(args, "update_info", None)
+            )
+        terminal_reason = _ui_terminal_reason()
+        if terminal_reason:
+            return _render_ui_home_fallback(
+                args, terminal_reason, getattr(args, "update_info", None)
+            )
+        try:
+            return _run_ui_home(
+                ascii_mode=getattr(args, "ascii", False),
+                update_info=getattr(args, "update_info", None),
+            )
+        except KeyboardInterrupt:
+            print("UI cancelled.", file=sys.stderr)
+            return 130
+        except curses.error:
+            return _render_ui_home_fallback(
+                args,
+                "curses could not initialize",
+                getattr(args, "update_info", None),
+            )
+
     service = HoroscopeService(ServiceConfig())
     payload = _generate_payload(service, args, args.kind)
 

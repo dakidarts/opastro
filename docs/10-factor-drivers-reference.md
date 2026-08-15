@@ -53,7 +53,10 @@ When `include_fixed_stars=true` on a natal request, the snapshot includes conjun
 
 Notes:
 - Fixed stars require the `sefstars.txt` ephemeris file.
-- Run `opastro doctor --download-ephemeris` to fetch it automatically.
+- `opastro doctor --download-ephemeris` does not fetch it because the public
+  Astro.com directory used for automatic downloads does not host this file.
+- Install `sefstars.txt` through your Swiss Ephemeris data distribution and
+  point `SE_EPHE_PATH` at its directory.
 - If the file is missing, `fixed_stars[]` returns an empty list silently.
 
 ### Arabic Parts

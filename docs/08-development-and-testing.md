@@ -50,6 +50,8 @@ opastro doctor
 opastro doctor --json
 opastro doctor --fix --dry-run
 opastro doctor --download-ephemeris
+opastro ui
+opastro ui --period daily --sign ARIES --no-interactive
 opastro profile list
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03
 opastro horoscope --period daily --sign ARIES --target-date 2026-04-03 --json

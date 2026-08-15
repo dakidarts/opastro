@@ -24,6 +24,7 @@ def _snapshot_fingerprint(text: str) -> str:
     normalized = re.sub(r"opastro\s+\d+\.\d+\.\d+", "opastro <VERSION>", normalized)
     normalized = re.sub(r"•\s+\d+\.\d+\.\d+", "• <VERSION>", normalized)
     normalized = re.sub(r"\b\d+\.\d+\.\d+\b", "<VERSION>", normalized)
+    normalized = re.sub(r"\b\d{4}-\d{2}-\d{2}\b", "<DATE>", normalized)
     normalized = (
         "\n".join(line.rstrip() for line in normalized.split("\n")).strip() + "\n"
     )
@@ -285,6 +286,25 @@ def test_ui_no_interactive_fallback(capsys):
     assert "OPASTRO REPORT" in captured.out
 
 
+def test_ui_without_period_opens_home_fallback(capsys):
+    code = main(["ui", "--no-interactive"])
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "UI home fallback" in captured.err
+    assert "Open Core Horoscope Engine" in captured.out
+    assert "--period is required" not in captured.err
+    assert "Search commands" in captured.out
+
+
+def test_ui_without_period_json_returns_home_payload(capsys):
+    code = main(["ui", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["mode"] == "home"
+    assert payload["commands"]
+    assert payload["ctas"]
+
+
 def test_ui_json_fallback_keeps_stdout_machine_readable(capsys):
     code = main(
         [
@@ -336,6 +356,91 @@ def test_ui_key_state_transitions():
     assert not _apply_ui_key(
         state, ord("q"), section_count=3, page_height=10, curses_module=keys
     )
+
+
+def test_ui_home_palette_key_state_transitions():
+    state = _UIState()
+    assert _apply_ui_key(
+        state,
+        ord("/"),
+        section_count=6,
+        page_height=10,
+        home_mode=True,
+    )
+    assert state.home_palette == "commands"
+    assert state.filter_requested is True
+    state.filter_requested = False
+    assert _apply_ui_key(
+        state,
+        ord("@"),
+        section_count=3,
+        page_height=10,
+        home_mode=True,
+    )
+    assert state.home_palette == "cta"
+    assert _apply_ui_key(
+        state,
+        10,
+        section_count=3,
+        page_height=10,
+        home_mode=True,
+    )
+    assert state.home_action_requested is True
+    _apply_ui_key(
+        state,
+        ord("c"),
+        section_count=3,
+        page_height=10,
+        home_mode=True,
+    )
+    assert state.filter_query == ""
+    _apply_ui_key(
+        state,
+        ord("?"),
+        section_count=3,
+        page_height=10,
+        home_mode=True,
+    )
+    assert state.help_visible is True
+    _apply_ui_key(
+        state,
+        27,
+        section_count=3,
+        page_height=10,
+        home_mode=True,
+    )
+    assert state.help_visible is False
+
+    state.home_palette = "cta"
+    _apply_ui_key(
+        state,
+        ord("o"),
+        section_count=3,
+        page_height=10,
+        home_mode=True,
+    )
+    assert state.home_open_requested is True
+
+
+def test_home_payload_indexes_the_full_command_surface():
+    payload = cli_module._home_payload()
+    names = {item["name"] for item in payload["commands"]}
+    assert payload["mode"] == "home"
+    assert {"init", "profile", "natal", "render", "serve", "ui"} <= names
+    assert (
+        "h"
+        in next(item for item in payload["commands"] if item["name"] == "horoscope")[
+            "aliases"
+        ]
+    )
+
+
+def test_home_palette_search_supports_aliases_and_multiple_terms():
+    commands = cli_module._filter_home_items("commands", "planet p")
+    assert [item[0] for item in commands] == ["planet"]
+
+    ctas = cli_module._filter_home_items("cta", "premium readings")
+    assert [item[0] for item in ctas] == ["premium"]
 
 
 def test_ui_ascii_glyph_mode(monkeypatch):
@@ -735,6 +840,54 @@ def test_command_help_uses_themed_tables(capsys):
     assert "Usage" in out
 
 
+def test_ui_help_documents_home_deck(capsys):
+    code = main(["ui", "--help"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "interactive home deck" in out
+
+
+def test_doctor_download_does_not_claim_manual_fixed_stars_are_present(
+    monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        cli_module,
+        "ensure_minor_body_ephemeris_report",
+        lambda _: types.SimpleNamespace(downloaded=[], missing_downloadable={}),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "missing_ephemeris_files",
+        lambda _: {"sefstars.txt": "Fixed star catalogue (manual installation)"},
+    )
+    code = main(["doctor", "--download-ephemeris"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "No supported files needed downloading." in out
+    assert "All required files already present" not in out
+    assert "not auto-downloaded" in out
+
+
+def test_doctor_download_json_reports_post_download_state(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli_module,
+        "ensure_minor_body_ephemeris_report",
+        lambda _: types.SimpleNamespace(downloaded=[], missing_downloadable={}),
+    )
+    monkeypatch.setattr(
+        cli_module,
+        "missing_ephemeris_files",
+        lambda _: {"sefstars.txt": "Fixed star catalogue (manual installation)"},
+    )
+    code = main(["doctor", "--download-ephemeris", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["ephemeris_files_missing_after_download"] == {
+        "sefstars.txt": "Fixed star catalogue (manual installation)"
+    }
+    assert payload["fixed_star_catalogue"]["available"] is False
+
+
 def test_golden_snapshot_welcome_output(monkeypatch, capsys):
     monkeypatch.setenv("OPASTRO_COLOR", "never")
     monkeypatch.setattr("horoscope_engine.cli._term_width", lambda: 96)
@@ -743,7 +896,7 @@ def test_golden_snapshot_welcome_output(monkeypatch, capsys):
     assert code == 0
     assert (
         _snapshot_fingerprint(out)
-        == "69c71a01dbb4e2fff1d5aafa209fe668685027ab91d778bef06dbc97c93d639f"
+        == "493352ea07528ef67b4828d101f25cddc8790d5cf4289ad64d85f7f22cc725b2"
     )
 
 
@@ -755,7 +908,7 @@ def test_golden_snapshot_root_help_output(monkeypatch, capsys):
     assert code == 0
     assert (
         _snapshot_fingerprint(out)
-        == "f140e2beb1c0f9e0f49aca90cbc5de65f689b96ca04269b1b6c70581dbce3c74"
+        == "a402b890b0b2f71f92326bc28dc196310c580cc1cc15e9ffa44aa07f1ff099a0"
     )
 
 

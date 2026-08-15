@@ -73,7 +73,8 @@ def _probe_minor_body(body: BodySpec) -> bool:
         except swe.Error:
             logger.debug(
                 "Minor body %s (id=%s) unavailable with current ephemeris files. "
-                "Run 'opastro doctor --download-ephemeris' to fetch optional files.",
+                "Run 'opastro doctor --download-ephemeris' if supported optional "
+                "body files are missing.",
                 body.name,
                 body.swe_id,
             )

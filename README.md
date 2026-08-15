@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://opastro.com">
-    <img src="https://res.cloudinary.com/ds64xs2lp/image/upload/q_auto/f_auto/v1775556782/X-COVER_kfq8p8.jpg" alt="OpAstro Banner" />
+    <img src="https://res.cloudinary.com/ds64xs2lp/video/upload/v1786835532/opastro-tui_bk4czi.mp4" alt="OpAstro Banner" />
   </a>
 </p>
 
@@ -43,6 +43,27 @@ opastro horoscope --period daily --sign ARIES --target-date 2026-04-03 --format 
 ## General (...)
 ...
 ```
+
+### Interactive Home Deck
+
+Launch the cosmic terminal home screen with no report arguments:
+
+```bash
+opastro ui
+```
+
+The home deck includes an animated ASCII atmosphere, a searchable command
+palette (`/`) covering the full CLI surface, and useful website/docs/premium
+links (`@`). Press `h` or `?` for controls. Supply
+`--period` when you want the keyboard-driven report browser instead:
+
+```bash
+opastro ui --period daily --sign ARIES
+```
+
+Inside the `@` palette, press `o` to open the selected link in your browser.
+The JSON home payload includes command aliases and CTA targets for wrappers and
+IDE integrations.
 
 ## Open Core vs Premium
 
@@ -341,7 +362,7 @@ opastro render planetary-scene \
 
 ### Rendered Scene Example (April 20, 2026)
 
-![OpAstro Planetary Scene (April 20, 2026)](images/planetary-scene.png)
+![OpAstro Planetary Scene (April 20, 2026)](https://res.cloudinary.com/ds64xs2lp/image/upload/v1786798355/planetary-scene_gm4r87.png)
 
 Notes:
 - Planetary scenes use Swiss Ephemeris longitude/latitude and geocentric distance, a bundled precessed constellation catalog, deterministic date-seeded stars, and graphical SVG body markers. Distance bands are logarithmic for readability and are not heliocentric orbital-scale claims.

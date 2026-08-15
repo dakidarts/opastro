@@ -91,6 +91,8 @@ curl -X POST http://127.0.0.1:8000/horoscope \
 opastro doctor
 opastro doctor --json
 opastro doctor --download-ephemeris
+opastro ui
+# Home deck: / commands, @ links, o open CTA, h/? help, c clear search
 
 # Runtime logger
 opastro logger show --limit 10

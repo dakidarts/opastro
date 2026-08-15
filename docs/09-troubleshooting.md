@@ -11,6 +11,18 @@
 
 ## CLI Issues
 
+### `opastro ui` opens the home deck
+
+Behavior:
+- Running `opastro ui` without `--period` opens the animated command home deck.
+- Press `/` to search the full command surface, `@` to browse links and calls
+  to action, `o` to open a selected CTA, `h` or `?` for controls, and `q` or
+  `Esc` to quit.
+- Add `--period daily|weekly|monthly|yearly` to open the report browser.
+
+If the terminal cannot run curses, OpAstro prints the same home deck as a
+static fallback instead of logging a runtime error.
+
 ### `opastro: command not found`
 
 Cause:
@@ -178,7 +190,9 @@ Symptom:
 - Minor bodies missing from natal chart output.
 
 Cause:
-- Optional Swiss Ephemeris files (`seas_18.se1`, `sefstars.txt`) are not present.
+- Optional asteroid data (`seas_18.se1`) may be absent.
+- Fixed-star calculations additionally use `sefstars.txt`, which is not
+  auto-downloaded from the configured public Astro.com directory.
 
 Fix (auto-download):
 
@@ -186,7 +200,10 @@ Fix (auto-download):
 opastro doctor --download-ephemeris
 ```
 
-This downloads missing files to `~/.cache/opastro/ephemeris/` and makes them available automatically on subsequent runs.
+This downloads supported missing files to `~/.cache/opastro/ephemeris/` and
+makes them available automatically on subsequent runs. The command reports
+incomplete downloads accurately and does not claim that manual fixed-star data
+is present.
 
 Fix (manual):
 
@@ -197,6 +214,15 @@ curl -L -o ~/.cache/opastro/ephemeris/seas_18.se1 \
   https://www.astro.com/swisseph/ephe/seas_18.se1
 export SE_EPHE_PATH=~/.cache/opastro/ephemeris
 ```
+
+For fixed-star output, obtain `sefstars.txt` through your Swiss Ephemeris data
+distribution, place it in the directory configured by `SE_EPHE_PATH`, then
+run `opastro doctor` to verify the catalogue is visible. Without that file,
+`fixed_stars[]` remains an empty optional field; core planet, house, and aspect
+calculations continue to work.
+
+`opastro doctor --json` exposes `fixed_star_catalogue` with its availability,
+path, and `include_fixed_stars` requirement for CI and support tooling.
 
 ### Unexpected sign placements / planets look off
 
