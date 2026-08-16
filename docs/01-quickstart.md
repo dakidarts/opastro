@@ -26,7 +26,9 @@ from datetime import date
 
 service = oa.HoroscopeService(oa.ServiceConfig())
 response = service.generate(
-    oa.HoroscopeRequest(period=oa.Period.DAILY, sign="ARIES", target_date=date(2026, 4, 3))
+    oa.HoroscopeRequest(
+        period=oa.Period.DAILY, sign="ARIES", target_date=date(2026, 4, 3)
+    )
 )
 print(response.sign)
 ```
