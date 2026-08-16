@@ -50,6 +50,16 @@ def test_catalog_command_lists_core_entities(capsys):
     assert "Planets" in out
 
 
+def test_catalog_json_output_is_machine_readable(capsys):
+    code = main(["catalog", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert payload["version"] == cli_module._app_version()
+    assert "daily" in payload["periods"]
+    assert "ARIES" in payload["signs"]
+    assert "mars" in payload["planets"]
+
+
 def test_horoscope_json_output_mode(capsys):
     code = main(
         [
@@ -353,9 +363,67 @@ def test_ui_key_state_transitions():
     assert state.filter_query == ""
     _apply_ui_key(state, ord("3"), section_count=3, page_height=10, curses_module=keys)
     assert state.requested_period == "monthly"
+    _apply_ui_key(state, ord("r"), section_count=3, page_height=10, curses_module=keys)
+    assert state.refresh_requested is True
     assert not _apply_ui_key(
         state, ord("q"), section_count=3, page_height=10, curses_module=keys
     )
+
+
+def test_ui_report_cta_drawer_key_state_transitions():
+    keys = types.SimpleNamespace(
+        KEY_UP=1001,
+        KEY_DOWN=1002,
+        KEY_ENTER=1003,
+        KEY_NPAGE=1004,
+        KEY_PPAGE=1005,
+    )
+    state = _UIState()
+    assert _apply_ui_key(
+        state,
+        ord("@"),
+        section_count=3,
+        page_height=10,
+        curses_module=keys,
+        cta_count=3,
+    )
+    assert state.cta_visible is True
+    _apply_ui_key(
+        state,
+        ord("j"),
+        section_count=3,
+        page_height=10,
+        curses_module=keys,
+        cta_count=3,
+    )
+    assert state.cta_selected == 1
+    _apply_ui_key(
+        state,
+        10,
+        section_count=3,
+        page_height=10,
+        curses_module=keys,
+        cta_count=3,
+    )
+    assert "Selected premium" in state.status_message
+    _apply_ui_key(
+        state,
+        ord("o"),
+        section_count=3,
+        page_height=10,
+        curses_module=keys,
+        cta_count=3,
+    )
+    assert state.cta_open_requested is True
+    _apply_ui_key(
+        state,
+        27,
+        section_count=3,
+        page_height=10,
+        curses_module=keys,
+        cta_count=3,
+    )
+    assert state.cta_visible is False
 
 
 def test_ui_home_palette_key_state_transitions():
@@ -426,7 +494,8 @@ def test_home_payload_indexes_the_full_command_surface():
     payload = cli_module._home_payload()
     names = {item["name"] for item in payload["commands"]}
     assert payload["mode"] == "home"
-    assert {"init", "profile", "natal", "render", "serve", "ui"} <= names
+    assert {"init", "profile", "natal", "render", "serve"} <= names
+    assert "ui" not in names
     assert (
         "h"
         in next(item for item in payload["commands"] if item["name"] == "horoscope")[
@@ -441,6 +510,185 @@ def test_home_palette_search_supports_aliases_and_multiple_terms():
 
     ctas = cli_module._filter_home_items("cta", "premium readings")
     assert [item[0] for item in ctas] == ["premium"]
+
+
+def test_home_command_args_strip_display_launcher():
+    assert cli_module._home_command_args(
+        "opastro explain --kind horoscope --period daily --sign ARIES"
+    ) == [
+        "explain",
+        "--kind",
+        "horoscope",
+        "--period",
+        "daily",
+        "--sign",
+        "ARIES",
+    ]
+
+
+def test_home_command_selection_executes_and_restores_tui(monkeypatch):
+    calls = []
+
+    class FakeCurses:
+        error = RuntimeError
+
+        @staticmethod
+        def endwin():
+            calls.append("endwin")
+
+        @staticmethod
+        def reset_prog_mode():
+            calls.append("reset")
+
+    class FakeScreen:
+        def keypad(self, value):
+            calls.append(("keypad", value))
+
+        def clear(self):
+            calls.append("clear")
+
+        def refresh(self):
+            calls.append("refresh")
+
+    monkeypatch.setattr(cli_module, "curses", FakeCurses)
+
+    def _fake_run(argv, **kwargs):
+        calls.append(("run", argv, kwargs))
+        return types.SimpleNamespace(
+            returncode=0,
+            stdout="\x1b[32mresult line\x1b[0m\n",
+            stderr="diagnostic line\n",
+        )
+
+    monkeypatch.setattr(
+        cli_module.subprocess,
+        "run",
+        _fake_run,
+    )
+
+    result = cli_module._execute_home_command(
+        FakeScreen(),
+        "explain",
+        "opastro explain --kind horoscope --period daily --sign ARIES",
+    )
+    assert result.name == "explain"
+    assert result.returncode == 0
+    assert result.stdout == "\x1b[32mresult line\x1b[0m\n"
+    assert result.stderr == "diagnostic line\n"
+    assert calls[0] == "endwin"
+    assert calls[1][0] == "run"
+    assert calls[1][1][1:] == [
+        "-m",
+        "horoscope_engine",
+        "explain",
+        "--kind",
+        "horoscope",
+        "--period",
+        "daily",
+        "--sign",
+        "ARIES",
+    ]
+    assert calls[1][2]["stdout"] == cli_module.subprocess.PIPE
+    assert calls[1][2]["stderr"] == cli_module.subprocess.PIPE
+    assert "reset" in calls
+
+
+def test_ui_command_result_lines_strip_ansi_and_show_streams():
+    result = cli_module._UICommandResult(
+        name="catalog",
+        command=["catalog"],
+        stdout="\x1b[32mPeriods\x1b[0m\nDaily\n",
+        stderr="warning: sample\n",
+        returncode=0,
+    )
+    lines = cli_module._ui_command_result_lines(result, 40)
+    rendered = "\n".join(line for _, line in lines)
+    assert "Periods" in rendered
+    assert "\\x1b" not in rendered
+    assert "Diagnostics" in rendered
+    assert "warning: sample" in rendered
+
+
+def test_ui_result_search_keeps_metadata_and_matching_lines():
+    result = cli_module._UICommandResult(
+        name="catalog",
+        command=["catalog"],
+        stdout="Periods\nDaily\nSigns\nARIES\n",
+        stderr="",
+        returncode=0,
+    )
+    lines = cli_module._ui_command_result_lines(result, 40)
+    filtered = cli_module._filter_ui_result_lines(lines, "aries")
+    rendered = "\n".join(line for _, line in filtered)
+    assert "Command: opastro catalog" in rendered
+    assert "ARIES" in rendered
+    assert "Daily" not in rendered
+    assert "Matches for: aries" in rendered
+
+
+def test_ui_result_page_key_state_transitions():
+    state = _UIState(
+        result_page=cli_module._UICommandResult(
+            name="catalog",
+            command=["catalog"],
+            stdout="line\n",
+            stderr="",
+            returncode=0,
+        )
+    )
+    keys = types.SimpleNamespace(
+        KEY_UP=1001,
+        KEY_DOWN=1002,
+        KEY_ENTER=1003,
+        KEY_NPAGE=1004,
+        KEY_PPAGE=1005,
+    )
+    _apply_ui_key(
+        state,
+        ord("j"),
+        section_count=0,
+        page_height=10,
+        curses_module=keys,
+        home_mode=True,
+    )
+    assert state.result_scroll_offset == 1
+    _apply_ui_key(
+        state,
+        ord("/"),
+        section_count=0,
+        page_height=10,
+        curses_module=keys,
+        home_mode=True,
+    )
+    assert state.result_filter_requested is True
+    _apply_ui_key(
+        state,
+        ord("r"),
+        section_count=0,
+        page_height=10,
+        curses_module=keys,
+        home_mode=True,
+    )
+    assert state.result_rerun_requested is True
+    state.result_filter_query = "aries"
+    _apply_ui_key(
+        state,
+        ord("c"),
+        section_count=0,
+        page_height=10,
+        curses_module=keys,
+        home_mode=True,
+    )
+    assert state.result_filter_query == ""
+    _apply_ui_key(
+        state,
+        27,
+        section_count=0,
+        page_height=10,
+        curses_module=keys,
+        home_mode=True,
+    )
+    assert state.result_page is None
 
 
 def test_ui_ascii_glyph_mode(monkeypatch):
@@ -571,7 +819,7 @@ def test_ui_section_filter_matches_labels():
     assert _filter_ui_sections(sections, "") == sections
 
 
-def test_ui_curses_loop_handles_period_filter_and_density(monkeypatch):
+def test_ui_curses_loop_handles_period_filter_and_density_in_compact_mode(monkeypatch):
     payload = HoroscopeService(ServiceConfig()).generate(
         HoroscopeRequest(
             period=Period.DAILY,
@@ -598,7 +846,7 @@ def test_ui_curses_loop_handles_period_filter_and_density(monkeypatch):
             return None
 
         def getmaxyx(self):
-            return (24, 100)
+            return (24, 60)
 
         def getstr(self, *_args):
             return b"career"
@@ -656,6 +904,87 @@ def test_ui_curses_loop_handles_period_filter_and_density(monkeypatch):
     assert requested_periods == ["monthly"]
 
 
+def test_ui_curses_loop_refreshes_and_opens_report_cta(monkeypatch):
+    payload = HoroscopeService(ServiceConfig()).generate(
+        HoroscopeRequest(
+            period=Period.DAILY,
+            sign="ARIES",
+            target_date=date(2026, 4, 3),
+        )
+    )
+    requested_periods = []
+    opened_urls = []
+
+    class FakeCursesError(Exception):
+        pass
+
+    class FakeScreen:
+        def __init__(self):
+            self.keys = [ord("r"), ord("@"), ord("j"), ord("o"), ord("q")]
+
+        def addch(self, *_args):
+            return None
+
+        def addnstr(self, *_args):
+            return None
+
+        def erase(self):
+            return None
+
+        def getmaxyx(self):
+            return (24, 100)
+
+        def getch(self):
+            return self.keys.pop(0)
+
+        def hline(self, *_args):
+            return None
+
+        def keypad(self, *_args):
+            return None
+
+        def refresh(self):
+            return None
+
+    class FakeCurses:
+        A_BOLD = 1
+        A_DIM = 2
+        A_NORMAL = 0
+        A_REVERSE = 4
+        KEY_DOWN = 1001
+        KEY_ENTER = 1002
+        KEY_NPAGE = 1003
+        KEY_PPAGE = 1004
+        KEY_UP = 1005
+        error = FakeCursesError
+
+        @staticmethod
+        def curs_set(_value):
+            return None
+
+        @staticmethod
+        def has_colors():
+            return False
+
+        @staticmethod
+        def wrapper(callback):
+            return callback(FakeScreen())
+
+    monkeypatch.setattr(cli_module, "curses", FakeCurses)
+    monkeypatch.setattr(
+        cli_module,
+        "webbrowser",
+        types.SimpleNamespace(open=lambda url: opened_urls.append(url) or True),
+    )
+    code = cli_module._run_ui(
+        payload,
+        payload_loader=lambda period: (requested_periods.append(period) or payload),
+    )
+    assert code == 0
+    assert requested_periods == ["daily"]
+    assert opened_urls == ["https://numerologyapi.com"]
+
+
 def test_doctor_fix_dry_run(capsys):
     code = main(["doctor", "--fix", "--dry-run"])
     out = capsys.readouterr().out
@@ -671,8 +1000,12 @@ def test_doctor_json_output(capsys):
     payload = json.loads(out)
     assert code == 0
     assert "python_executable" in payload
+    assert payload["opastro_version"] == cli_module._app_version()
     assert "runtime_ok" in payload
     assert "dependencies" in payload
+    assert "terminal" in payload
+    assert "analytics" in payload
+    assert "config_dir" in payload
     assert payload["fix"]["requested"] is False
 
 

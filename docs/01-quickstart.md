@@ -113,8 +113,9 @@ opastro ui
 ```
 
 With no period, `opastro ui` opens the animated home deck. Use `/` to search
-the complete command surface and `@` to browse OpAstro, documentation, and
-premium CTAs. Press `h` or `?` for the in-context control panel. Use
+the available CLI actions and `@` to browse OpAstro, documentation, and
+premium CTAs. The active `ui` launcher is intentionally not listed inside its
+own command palette. Press `h` or `?` for the in-context control panel. Use
 `--period` to open the report browser:
 
 ```bash
@@ -122,11 +123,15 @@ opastro ui --period daily --sign ARIES --target-date 2026-04-03
 ```
 
 Controls:
+Home deck:
 - `/` command palette on the home deck
 - `@` links and CTA palette on the home deck
 - `o` open the selected CTA in a browser
 - `h` / `?` home-deck help panel
 - `c` clear the active home palette search
+- `Enter` run the selected command or select a CTA
+
+Report browser:
 - `↑↓` / `j,k` section navigation
 - `enter` toggle factor drill-down
 - `pgup` / `pgdn` content scroll
@@ -135,7 +140,31 @@ Controls:
 - `1` / `2` / `3` / `4` switch daily/weekly/monthly/yearly periods
 - `/` filter sections; `c` clear the active filter
 - `d` toggle compact/expanded density
+- `r` refresh the current report period
+- `@` open the in-session links and CTA drawer
+- `Enter` select a destination in the CTA drawer
+- `o` open the selected CTA in a browser
 - `q` or `esc` quit
+
+Command result page:
+- `↑↓` / `j,k` scroll one line
+- `pgup` / `pgdn` scroll one page
+- `/` find text in the current result
+- `c` clear the result search
+- `r` rerun the command
+- `g` / `G` jump to the beginning/end
+- `Enter` / `Esc` return to the home deck
+- `q` quit from the TUI
+
+When the CTA drawer is open, `Esc` closes it before it can exit the report
+browser. Refreshes and period changes announce their result in the subtle
+status line above the footer.
+
+Commands launched from `/` are captured and rendered in this dark result page.
+Text, JSON, Markdown, help output, diagnostics, and saved export paths are
+readable in the terminal. Search is case-insensitive and keeps the command
+metadata visible; binary exports such as PDFs are never streamed into the
+screen.
 
 The same browser supports birthday and planet reports:
 
@@ -150,13 +179,14 @@ supports the same period keys as horoscope mode. Events mode presents each
 celestial event as a navigable section and supports period switching, filtering,
 and JSON/static fallback output.
 
-The interactive view requires a TTY on both stdin and stdout and a terminal at
-least 72 columns wide by 10 rows high. It automatically falls back to the
-static report when the terminal is unavailable, `TERM=dumb`, or the terminal is
-too small. Use `--no-interactive`, `--json`, `--format`, or `--export` for
-scriptable output; fallback/status messages are written to stderr so JSON stays
-machine-readable. Use `--ascii` or `OPASTRO_ASCII=1` for terminals without
-reliable Unicode support.
+The interactive view requires a TTY on both stdin and stdout. The home deck is
+best at 72 columns by 10 rows; report mode remains interactive down to 42
+columns by 10 rows and switches to a compact single-column reader. It falls
+back to static output when the terminal is unavailable, `TERM=dumb`, or below
+the compact minimum. Use `--no-interactive`, `--json`, `--format`, or `--export`
+for scriptable output; fallback/status messages are written to stderr so JSON
+stays machine-readable. Use `--ascii` or `OPASTRO_ASCII=1` for terminals
+without reliable Unicode support.
 
 ### Batch mode
 
@@ -238,6 +268,7 @@ curl -X POST http://127.0.0.1:8000/horoscope \
 ```bash
 opastro doctor
 opastro doctor --json
+opastro catalog --json
 opastro logger show --limit 5
 ```
 

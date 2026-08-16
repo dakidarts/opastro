@@ -53,8 +53,9 @@ opastro ui
 ```
 
 The home deck includes an animated ASCII atmosphere, a searchable command
-palette (`/`) covering the full CLI surface, and useful website/docs/premium
-links (`@`). Press `h` or `?` for controls. Supply
+palette (`/`) covering the available CLI actions, and useful website/docs/premium
+links (`@`). The current `ui` launcher is intentionally omitted to avoid a
+recursive command inside its own interface. Press `h` or `?` for controls. Supply
 `--period` when you want the keyboard-driven report browser instead:
 
 ```bash
@@ -62,8 +63,25 @@ opastro ui --period daily --sign ARIES
 ```
 
 Inside the `@` palette, press `o` to open the selected link in your browser.
-The JSON home payload includes command aliases and CTA targets for wrappers and
+Inside the `/` palette, press Enter to run the selected command example. The
+JSON home payload includes command aliases and CTA targets for wrappers and
 IDE integrations.
+
+The report browser keeps those affordances close at hand: press `@` to open a
+links drawer without leaving the report, `Enter` to select a destination, and
+`o` to open it. Press `r` to refresh the current period and receive a compact
+status confirmation in the footer.
+
+Command results launched from `/` stay inside the dark TUI atmosphere. Output
+and diagnostics are captured into a scrollable result page, with `Enter` or
+`Esc` returning to the home deck. Use `/` to find text in a long result, `c` to
+clear the search, or `r` to rerun the command. Export commands show their
+saved artifact paths there while binary files such as natal PDFs remain safely
+on disk.
+
+Report mode is responsive: wide terminals use the split section browser, while
+terminals from 42 columns upward switch to a compact single-column reader
+without losing filters, factor drill-down, refresh, or links.
 
 ## Open Core vs Premium
 
@@ -198,8 +216,8 @@ opastro
 | `opastro init` | Interactive onboarding to create/update a default profile (`--template api|cli|natal`) |
 | `opastro profile ...` | Manage saved profiles (`save`, `list`, `show`, `use`) |
 | `opastro welcome` | Show welcome UI explicitly |
-| `opastro catalog` | List periods, sections, signs, and planets |
-| `opastro doctor` | Runtime diagnostics (python path, platform, ephemeris mode) |
+| `opastro catalog` | List periods, sections, signs, and planets (`--json` for scripts/IDEs) |
+| `opastro doctor` | Runtime diagnostics (python path, platform, ephemeris, terminal, config) |
 | `opastro logger` | Runtime error log inspector (`show`, `tail`, `path`, `clear`) |
 | `opastro horoscope` | Generate standard reports (daily/weekly/monthly/yearly) |
 | `opastro birthday` | Generate birthday-cycle yearly report |
@@ -269,7 +287,7 @@ opastro explain --kind horoscope --period daily --sign ARIES --target-date 2026-
 
 # Interactive TUI
 opastro ui --period daily --sign ARIES --target-date 2026-04-03
-# keys: ↑↓/j,k section • 1-4 period • / filter • d density • enter factor mode • pgup/pgdn scroll • g/G jump • h/? help • q quit
+# keys: ↑↓/j,k section • 1-4 period • / filter • d density • enter factor mode • pgup/pgdn scroll • g/G jump • r refresh • @ links • h/? help • q quit
 # static/export mode: opastro ui --period daily --sign ARIES --json
 # limited terminals: opastro ui --period daily --sign ARIES --ascii
 # alternate report modes:
@@ -469,6 +487,9 @@ opastro doctor --fix --dry-run
 # Machine-readable diagnostics for CI/tooling
 opastro doctor --json
 
+# Machine-readable engine catalog for scripts and IDE integrations
+opastro catalog --json
+
 # Apply auto-fixes (installs editable package + deps)
 opastro doctor --fix
 
@@ -477,7 +498,7 @@ opastro logger show --limit 20
 opastro logger clear
 
 # Opt-in anonymous local analytics
-OPASTRO_ANALYTICS=1 opastro catalog
+OPASTRO_ANALYTICS=1 opastro catalog --json
 
 # Generate shell completions
 opastro completion --shell bash

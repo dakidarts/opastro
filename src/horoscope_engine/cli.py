@@ -15,6 +15,7 @@ import os
 import platform
 import random
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -104,6 +105,7 @@ COMMAND_ALIASES = {
 }
 
 ACCENT_RGB = (61, 221, 119)  # #3ddd77
+HOME_SUBTLE_RGB = (83, 80, 98)  # #535062
 ACCENT_SOFT_RGB = (148, 244, 183)
 ACCENT_FADE_RGB = (108, 230, 151)
 ACCENT_DEEP_RGB = (46, 187, 101)
@@ -149,6 +151,15 @@ class OpastroArgumentParser(argparse.ArgumentParser):
 
 
 @dataclass
+class _UICommandResult:
+    name: str
+    command: list[str]
+    stdout: str
+    stderr: str
+    returncode: int
+
+
+@dataclass
 class _UIState:
     selected: int = 0
     show_factors: bool = False
@@ -162,6 +173,16 @@ class _UIState:
     home_action_requested: bool = False
     home_open_requested: bool = False
     home_message: str = ""
+    refresh_requested: bool = False
+    cta_visible: bool = False
+    cta_selected: int = 0
+    cta_open_requested: bool = False
+    status_message: str = ""
+    result_page: Optional[_UICommandResult] = None
+    result_scroll_offset: int = 0
+    result_filter_query: str = ""
+    result_filter_requested: bool = False
+    result_rerun_requested: bool = False
 
 
 @dataclass(frozen=True)
@@ -264,11 +285,6 @@ _UI_HOME_COMMANDS = (
         "serve",
         "Run the local FastAPI integration server.",
         "opastro serve --help",
-    ),
-    (
-        "ui",
-        "Open this home deck or the interactive report browser.",
-        "opastro ui",
     ),
 )
 
@@ -401,6 +417,11 @@ def _build_base_parser() -> argparse.ArgumentParser:
         aliases=COMMAND_ALIASES["catalog"],
         help="List supported periods, sections, signs, and planets.",
         description="Print the command catalog for scripting and onboarding.",
+    )
+    catalog.add_argument(
+        "--json",
+        action="store_true",
+        help="Output the catalog as JSON for scripts and IDE integrations.",
     )
     catalog.set_defaults(handler=_handle_catalog)
 
@@ -2462,7 +2483,20 @@ def _handle_welcome(args: argparse.Namespace) -> int:
     return _show_welcome(getattr(args, "update_info", None))
 
 
-def _handle_catalog(_: argparse.Namespace) -> int:
+def _catalog_payload() -> dict[str, Any]:
+    return {
+        "version": _app_version(),
+        "periods": [period.value for period in Period],
+        "sections": [section.value for section in Section],
+        "signs": list(ZODIAC_SIGNS),
+        "planets": [planet.value for planet in PlanetName],
+    }
+
+
+def _handle_catalog(args: argparse.Namespace) -> int:
+    if args.json:
+        print(json.dumps(_catalog_payload(), indent=2, sort_keys=True))
+        return 0
     _print_heading("OPASTRO CATALOG")
     _print_divider()
     print(_style("Periods", "1"))
@@ -2495,6 +2529,28 @@ def _dependency_health() -> tuple[list[str], list[str]]:
         except Exception:
             missing.append(label)
     return missing, ok
+
+
+def _terminal_diagnostics() -> dict[str, Any]:
+    term = (os.getenv("TERM") or "").strip()
+    colorterm = (os.getenv("COLORTERM") or "").strip()
+    color_mode = (os.getenv("OPASTRO_COLOR") or "auto").strip().lower()
+    no_color = bool(os.getenv("NO_COLOR")) or color_mode in {
+        "0",
+        "false",
+        "never",
+        "off",
+        "disabled",
+    }
+    truecolor = colorterm.lower() in {"truecolor", "24bit"}
+    return {
+        "term": term or None,
+        "colorterm": colorterm or None,
+        "color_mode": color_mode,
+        "color_enabled": _should_colorize(),
+        "no_color": no_color,
+        "truecolor": truecolor,
+    }
 
 
 def _doctor_fix(*, dry_run: bool, emit_text: bool = True) -> dict[str, Any]:
@@ -2535,9 +2591,17 @@ def _handle_doctor(args: argparse.Namespace) -> int:
     if not args.json:
         _print_heading("OPASTRO DOCTOR")
         _print_divider()
+        print(f"OpAstro version: {_app_version()}")
         print(f"Python version : {platform.python_version()}")
         print(f"Python exec    : {sys.executable}")
         print(f"Platform       : {platform.platform()}")
+        terminal = _terminal_diagnostics()
+        print(
+            "Color support  : "
+            f"{'enabled' if terminal['color_enabled'] else 'disabled'} "
+            f"(TERM={terminal['term'] or 'unset'})"
+        )
+        print(f"Config dir     : {_config_dir()}")
         print(f"Ephemeris path : {cfg.ephemeris.ephemeris_path or 'auto/not-set'}")
         print(f"Zodiac system  : {cfg.ephemeris.zodiac_system}")
         print(f"Ayanamsa       : {cfg.ephemeris.ayanamsa_system}")
@@ -2576,9 +2640,16 @@ def _handle_doctor(args: argparse.Namespace) -> int:
             print(_style("Deps check     : OK", "1;32"))
 
     payload: dict[str, Any] = {
+        "opastro_version": _app_version(),
         "python_version": platform.python_version(),
         "python_executable": sys.executable,
         "platform": platform.platform(),
+        "config_dir": str(_config_dir()),
+        "terminal": _terminal_diagnostics(),
+        "analytics": {
+            "enabled": _analytics_enabled(),
+            "path": str(_analytics_log_path()),
+        },
         "ephemeris_path": cfg.ephemeris.ephemeris_path or "auto/not-set",
         "zodiac_system": str(cfg.ephemeris.zodiac_system),
         "ayanamsa": str(cfg.ephemeris.ayanamsa_system),
@@ -3544,6 +3615,141 @@ def _home_query_matches(
     return len(query_token) >= 2 and any(query_token in word for word in words)
 
 
+def _home_command_args(target: str) -> list[str]:
+    """Convert a displayed ``opastro ...`` example into safe argv parts."""
+    parts = shlex.split(target)
+    if parts and parts[0] == "opastro":
+        return parts[1:]
+    return parts
+
+
+def _execute_home_command(stdscr, name: str, target: str) -> _UICommandResult:
+    """Run a selected command example and capture its terminal result."""
+    if name == "ui":
+        return _UICommandResult(
+            name=name,
+            command=["ui"],
+            stdout="",
+            stderr="Already inside `opastro ui`; choose another command.",
+            returncode=1,
+        )
+
+    command = _home_command_args(target)
+    if not command:
+        return _UICommandResult(
+            name=name,
+            command=[],
+            stdout="",
+            stderr=f"No runnable example is configured for {name}.",
+            returncode=1,
+        )
+
+    try:
+        curses.endwin()
+    except curses.error:
+        pass
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-m", "horoscope_engine", *command],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+        status = completed.returncode
+        stdout = completed.stdout or ""
+        stderr = completed.stderr or ""
+    except KeyboardInterrupt:
+        status = 130
+        stdout = ""
+        stderr = "Command cancelled by user."
+    except Exception as exc:
+        status = 1
+        stdout = ""
+        stderr = f"Could not launch command: {exc}"
+
+    try:
+        curses.reset_prog_mode()
+        stdscr.keypad(True)
+        stdscr.clear()
+        stdscr.refresh()
+    except curses.error:
+        pass
+    return _UICommandResult(
+        name=name,
+        command=command,
+        stdout=stdout,
+        stderr=stderr,
+        returncode=status,
+    )
+
+
+def _ui_command_result_lines(
+    result: _UICommandResult, width: int
+) -> list[tuple[str, str]]:
+    """Build styled, wrapped lines for a command result page."""
+    status = "OK" if result.returncode == 0 else f"EXIT {result.returncode}"
+    command_line = "opastro " + shlex.join(result.command)
+    lines: list[tuple[str, str]] = [
+        ("title", f"RESULT PAGE {result.name.upper()}"),
+        ("meta", f"Status: {status}"),
+        ("meta", f"Command: {command_line}"),
+        ("blank", ""),
+    ]
+
+    def _append_stream(label: str, content: str, kind: str) -> None:
+        cleaned = re.sub(r"\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "", content)
+        if not cleaned.strip():
+            return
+        lines.append(("label", label))
+        for raw_line in cleaned.rstrip("\n").split("\n"):
+            for wrapped in _wrap_for_width(raw_line, width):
+                lines.append((kind, wrapped))
+        lines.append(("blank", ""))
+
+    _append_stream("Output", result.stdout, "body")
+    _append_stream("Diagnostics", result.stderr, "warning")
+    if not result.stdout.strip() and not result.stderr.strip():
+        lines.extend(
+            [
+                ("body", "The command completed without terminal output."),
+                ("blank", ""),
+            ]
+        )
+    lines.append(("muted", "Press Enter or Esc to return to the home deck."))
+    return lines
+
+
+def _filter_ui_result_lines(
+    lines: list[tuple[str, str]], query: str
+) -> list[tuple[str, str]]:
+    """Keep result metadata and matching lines for in-page result search."""
+    needle = query.strip().casefold()
+    if not needle:
+        return lines
+    metadata = lines[:4]
+    matches = [(kind, line) for kind, line in lines[4:] if needle in line.casefold()]
+    filtered = [
+        *metadata,
+        ("label", f"Matches for: {query.strip()} ({len(matches)})"),
+        ("blank", ""),
+    ]
+    if matches:
+        filtered.extend(matches)
+    else:
+        filtered.append(("warning", "No result lines match this search."))
+    filtered.extend(
+        [
+            ("blank", ""),
+            ("muted", "Press c to clear the result search."),
+        ]
+    )
+    return filtered
+
+
 def _apply_ui_key(
     state: _UIState,
     key: int,
@@ -3553,6 +3759,7 @@ def _apply_ui_key(
     curses_module: Any = None,
     allow_period_switch: bool = True,
     home_mode: bool = False,
+    cta_count: int = 0,
 ) -> bool:
     """Apply one keypress and return whether the UI should keep running."""
     keys = curses_module or curses
@@ -3566,6 +3773,33 @@ def _apply_ui_key(
     if key == ord("q"):
         return False
     if home_mode:
+        if state.result_page:
+            if key in (27, 10, 13, key_enter):
+                state.result_page = None
+                state.result_scroll_offset = 0
+                state.result_filter_query = ""
+                state.home_message = ""
+                return True
+            if key in (key_up, ord("k")):
+                state.result_scroll_offset = max(0, state.result_scroll_offset - 1)
+            elif key in (key_down, ord("j")):
+                state.result_scroll_offset += 1
+            elif key in (key_next_page, ord(" ")):
+                state.result_scroll_offset += step
+            elif key in (key_previous_page, ord("b")):
+                state.result_scroll_offset = max(0, state.result_scroll_offset - step)
+            elif key == ord("g"):
+                state.result_scroll_offset = 0
+            elif key == ord("G"):
+                state.result_scroll_offset = 10**9
+            elif key == ord("/"):
+                state.result_filter_requested = True
+            elif key == ord("c"):
+                state.result_filter_query = ""
+                state.result_scroll_offset = 0
+            elif key in (ord("r"), ord("R")):
+                state.result_rerun_requested = True
+            return True
         if key == 27:
             if state.help_visible:
                 state.help_visible = False
@@ -3600,11 +3834,41 @@ def _apply_ui_key(
             state.selected = (state.selected - 1) % section_count
         elif key in (key_down, ord("j")) and section_count:
             state.selected = (state.selected + 1) % section_count
-        elif key in (10, 13, key_enter) and section_count:
+        elif key in (10, 13, key_enter) and section_count and state.home_palette:
             state.home_action_requested = True
         return True
     if key in (27,):
+        if state.help_visible:
+            state.help_visible = False
+            return True
+        if state.cta_visible:
+            state.cta_visible = False
+            state.cta_selected = 0
+            state.status_message = "Links drawer closed."
+            return True
         return False
+    if key == ord("@") and cta_count:
+        state.cta_visible = not state.cta_visible
+        state.cta_selected = 0
+        state.status_message = (
+            "Links drawer opened. Use arrows, Enter, or o."
+            if state.cta_visible
+            else "Links drawer closed."
+        )
+        return True
+    if state.cta_visible:
+        if key in (ord("?"), ord("h")):
+            state.help_visible = not state.help_visible
+        elif key == ord("o"):
+            state.cta_open_requested = True
+        elif key in (key_up, ord("k")):
+            state.cta_selected = (state.cta_selected - 1) % cta_count
+        elif key in (key_down, ord("j")):
+            state.cta_selected = (state.cta_selected + 1) % cta_count
+        elif key in (10, 13, key_enter):
+            name, _, target = _UI_HOME_CTAS[state.cta_selected]
+            state.status_message = f"Selected {name}: {target}"
+        return True
     if key == ord("/"):
         state.filter_requested = True
         return True
@@ -3612,6 +3876,7 @@ def _apply_ui_key(
         state.filter_query = ""
         state.selected = 0
         state.scroll_offset = 0
+        state.status_message = "Section filter cleared."
         return True
     if key in (ord("?"), ord("h")):
         state.help_visible = not state.help_visible
@@ -3620,6 +3885,13 @@ def _apply_ui_key(
     if key == ord("d"):
         state.compact = not state.compact
         state.scroll_offset = 0
+        state.status_message = (
+            "Compact density enabled." if state.compact else "Expanded density enabled."
+        )
+        return True
+    if key in (ord("r"), ord("R")):
+        state.refresh_requested = True
+        state.status_message = "Refreshing the current report..."
         return True
     if allow_period_switch and key in (
         ord("1"),
@@ -3645,18 +3917,25 @@ def _apply_ui_key(
     elif key in (10, 13, key_enter):
         state.show_factors = not state.show_factors
         state.scroll_offset = 0
+        state.status_message = (
+            "Factor drill-down expanded."
+            if state.show_factors
+            else "Factor drill-down collapsed."
+        )
     elif key in (key_next_page, ord(" ")):
         state.scroll_offset += step
     elif key in (key_previous_page, ord("b")):
         state.scroll_offset = max(0, state.scroll_offset - step)
     elif key == ord("g"):
         state.scroll_offset = 0
+        state.status_message = "Moved to the top of this section."
     elif key == ord("G"):
         state.scroll_offset = 10**9
+        state.status_message = "Moved to the end of this section."
     return True
 
 
-def _ui_terminal_reason() -> Optional[str]:
+def _ui_terminal_reason(*, min_columns: int = 72) -> Optional[str]:
     if curses is None:
         return "curses is unavailable on this platform"
     if (os.getenv("TERM") or "").strip().lower() == "dumb":
@@ -3664,8 +3943,8 @@ def _ui_terminal_reason() -> Optional[str]:
     if not sys.stdin.isatty() or not sys.stdout.isatty():
         return "stdin and stdout must both be interactive terminals"
     size = shutil.get_terminal_size((DEFAULT_WRAP_WIDTH, 20))
-    if size.columns < 72 or size.lines < 10:
-        return "terminal is too small; resize to at least 72x10"
+    if size.columns < min_columns or size.lines < 10:
+        return f"terminal is too small; resize to at least {min_columns}x10"
     return None
 
 
@@ -3770,6 +4049,8 @@ def _render_ui_home_text() -> str:
             "  /          Search commands",
             "  @          Explore website, docs, and premium CTAs",
             "  h / ?      Show home controls",
+            "  Enter      Run a selected command or select a CTA",
+            "  o          Open the selected CTA",
             "  q / Esc    Quit",
             "",
             "→ https://opastro.com",
@@ -3824,6 +4105,7 @@ def _run_ui_home(
                 "background": curses.A_NORMAL,
                 "subtle": curses.A_DIM,
                 "glow": curses.A_BOLD,
+                "warning": curses.A_BOLD,
             }
             if not _should_colorize() or not curses.has_colors():
                 return theme
@@ -3835,6 +4117,25 @@ def _run_ui_home(
                 curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLACK)
                 curses.init_pair(4, curses.COLOR_CYAN, curses.COLOR_BLACK)
                 curses.init_pair(5, curses.COLOR_WHITE, curses.COLOR_GREEN)
+                curses.init_pair(6, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+                subtle_color = curses.COLOR_WHITE
+                subtle_attr = curses.A_DIM
+                can_change_color = getattr(curses, "can_change_color", None)
+                color_count = getattr(curses, "COLORS", 0)
+                if can_change_color and can_change_color() and color_count >= 256:
+                    try:
+                        subtle_color = color_count - 1
+                        curses.init_color(
+                            subtle_color,
+                            round(HOME_SUBTLE_RGB[0] * 1000 / 255),
+                            round(HOME_SUBTLE_RGB[1] * 1000 / 255),
+                            round(HOME_SUBTLE_RGB[2] * 1000 / 255),
+                        )
+                        subtle_attr = 0
+                    except curses.error:
+                        subtle_color = curses.COLOR_WHITE
+                        subtle_attr = curses.A_DIM
+                curses.init_pair(7, subtle_color, curses.COLOR_BLACK)
                 theme["header"] = curses.color_pair(1) | curses.A_BOLD
                 theme["accent"] = curses.color_pair(1) | curses.A_BOLD
                 theme["selected"] = curses.color_pair(2) | curses.A_BOLD
@@ -3843,6 +4144,8 @@ def _run_ui_home(
                 theme["background"] = curses.color_pair(3)
                 theme["subtle"] = curses.color_pair(3) | curses.A_DIM
                 theme["glow"] = curses.color_pair(5) | curses.A_BOLD
+                theme["warning"] = curses.color_pair(6) | curses.A_BOLD
+                theme["subtle"] = curses.color_pair(7) | subtle_attr
             except curses.error:
                 return theme
             return theme
@@ -3942,13 +4245,62 @@ def _run_ui_home(
             )
 
             content_y = title_y + 3
-            if state.help_visible and content_y < height - 2:
+            if state.result_page and content_y < height - 2:
+                result_lines = _filter_ui_result_lines(
+                    _ui_command_result_lines(state.result_page, max(1, width - 4)),
+                    state.result_filter_query,
+                )
+                result_page_h = max(1, height - content_y - 4)
+                max_result_scroll = max(0, len(result_lines) - result_page_h)
+                state.result_scroll_offset = max(
+                    0, min(state.result_scroll_offset, max_result_scroll)
+                )
+                result_status = (
+                    "OK" if state.result_page.returncode == 0 else "ATTENTION"
+                )
+                result_header = (
+                    f"RESULT STREAM {glyphs['bullet']} {result_status} "
+                    f"{glyphs['bullet']} scroll {state.result_scroll_offset + 1}/"
+                    f"{max_result_scroll + 1}"
+                )
+                if state.result_filter_query:
+                    result_header += (
+                        f" {glyphs['bullet']} find:{state.result_filter_query}"
+                    )
+                _safe_add(
+                    content_y,
+                    2,
+                    result_header,
+                    max(1, width - 3),
+                    theme["accent"],
+                )
+                try:
+                    stdscr.hline(content_y + 1, 2, ord(glyphs["rule"]), width - 4)
+                except curses.error:
+                    pass
+                visible_result_lines = result_lines[
+                    state.result_scroll_offset : state.result_scroll_offset
+                    + result_page_h
+                ]
+                for row, (kind, line) in enumerate(visible_result_lines):
+                    y = content_y + 2 + row
+                    if y >= height - 2:
+                        break
+                    attr = theme["body"]
+                    if kind == "title" or kind == "label":
+                        attr = theme["accent"]
+                    elif kind == "meta" or kind == "muted":
+                        attr = theme["subtle"]
+                    elif kind == "warning":
+                        attr = theme["warning"]
+                    _safe_add(y, 2, line, max(1, width - 3), attr)
+            elif state.help_visible and content_y < height - 2:
                 help_lines = (
                     "Home deck controls",
                     "↑↓ / j / k       Move through the selected palette",
                     "/                 Search every OpAstro command",
                     "@                 Browse website, docs, and premium links",
-                    "Enter             Select an item and reveal its next step",
+                    "Enter             Run a command or select a CTA",
                     "o                 Open the selected CTA in your browser",
                     "c                 Clear the active palette search",
                     "h / ?             Toggle this help panel",
@@ -4028,7 +4380,11 @@ def _run_ui_home(
                 _safe_add(
                     content_y + 1,
                     2,
-                    "Type a filter, then Enter. Esc closes the palette.",
+                    (
+                        "Type a filter, then Enter runs the command. Esc closes the palette."
+                        if palette == "commands"
+                        else "Type a filter, Enter selects, and o opens the CTA."
+                    ),
                     max(1, width - 3),
                     theme["muted"],
                 )
@@ -4062,7 +4418,13 @@ def _run_ui_home(
                     max(1, width - 3),
                     theme["muted"],
                 )
-            footer = "↑↓/j/k select  / commands  @ links & CTAs  Enter choose  o open  q/Esc quit"
+            if state.result_page:
+                footer = (
+                    "↑↓/j/k scroll  pgup/pgdn page  / find  c clear  r rerun  "
+                    "g/G top/end  Enter/Esc home  q quit"
+                )
+            else:
+                footer = "↑↓/j/k select  / commands  @ links & CTAs  Enter run/select  o open  q/Esc quit"
             _safe_add(height - 1, 0, footer, max(1, width - 1), theme["muted"])
             stdscr.refresh()
             key = stdscr.getch()
@@ -4085,14 +4447,41 @@ def _run_ui_home(
                     else "Search links and CTAs (Enter apply): "
                 )
                 _prompt_ui_filter(stdscr, state, theme, prompt=prompt)
+            if state.result_filter_requested:
+                state.result_filter_requested = False
+                _prompt_ui_filter(
+                    stdscr,
+                    state,
+                    theme,
+                    prompt="Find in result (Enter apply, Esc cancel): ",
+                )
+                state.result_filter_query = state.filter_query
+                state.filter_query = ""
+                state.result_scroll_offset = 0
+            if state.result_rerun_requested and state.result_page:
+                state.result_rerun_requested = False
+                previous_result = state.result_page
+                target = "opastro " + shlex.join(previous_result.command)
+                state.result_page = _execute_home_command(
+                    stdscr, previous_result.name, target
+                )
+                state.result_filter_query = ""
+                state.result_scroll_offset = 0
             if state.home_action_requested:
                 state.home_action_requested = False
                 chosen = _filter_home_items(
                     state.home_palette or "commands", state.filter_query
                 )
                 if chosen and state.selected < len(chosen):
-                    name, description, target = chosen[state.selected]
-                    state.home_message = f"Selected {name}: {target}"
+                    name, _, target = chosen[state.selected]
+                    if state.home_palette == "commands":
+                        state.result_page = _execute_home_command(stdscr, name, target)
+                        state.result_scroll_offset = 0
+                        state.home_palette = None
+                        state.filter_query = ""
+                        state.home_message = ""
+                    else:
+                        state.home_message = f"Selected {name}: {target}"
             if state.home_open_requested:
                 state.home_open_requested = False
                 chosen = _filter_home_items("cta", state.filter_query)
@@ -4147,6 +4536,7 @@ def _run_ui(
                 "muted": curses.A_DIM,
                 "body": curses.A_NORMAL,
                 "background": curses.A_NORMAL,
+                "stars": curses.A_DIM,
             }
             if not _should_colorize() or not curses.has_colors():
                 return theme
@@ -4165,6 +4555,7 @@ def _run_ui(
                 theme["muted"] = curses.color_pair(4)
                 theme["body"] = curses.color_pair(3)
                 theme["background"] = curses.color_pair(3)
+                theme["stars"] = curses.color_pair(1) | curses.A_DIM
             except curses.error:
                 return theme
             return theme
@@ -4177,18 +4568,175 @@ def _run_ui(
             background(" ", theme["background"])
         state = _UIState()
         glyphs = _ui_glyphs(ascii_mode=ascii_mode)
+        timeout = getattr(stdscr, "timeout", None)
+        if timeout:
+            timeout(140)
+        frame = 0
+
+        def _process_pending_actions() -> None:
+            nonlocal payload, sections
+
+            if state.filter_requested:
+                state.filter_requested = False
+                _prompt_ui_filter(stdscr, state, theme)
+                state.status_message = (
+                    f"Filter active: {state.filter_query}"
+                    if state.filter_query
+                    else "Section filter cleared."
+                )
+
+            if state.requested_period:
+                requested_period = state.requested_period
+                state.requested_period = None
+                if payload_loader:
+                    try:
+                        payload = payload_loader(requested_period)
+                        sections = payload.sections
+                        state.selected = 0
+                        state.show_factors = False
+                        state.scroll_offset = 0
+                        state.status_message = f"Loaded {requested_period} report."
+                    except Exception as exc:
+                        state.status_message = (
+                            f"Could not load {requested_period}: {exc}"
+                        )
+                else:
+                    state.status_message = "Period switching is unavailable here."
+
+            if state.refresh_requested:
+                state.refresh_requested = False
+                if payload_loader:
+                    current_period = payload.period.value
+                    try:
+                        payload = payload_loader(current_period)
+                        sections = payload.sections
+                        state.selected = 0
+                        state.show_factors = False
+                        state.scroll_offset = 0
+                        state.status_message = f"Refreshed {current_period} report."
+                    except Exception as exc:
+                        state.status_message = f"Could not refresh report: {exc}"
+                else:
+                    state.status_message = "Refresh is unavailable for this report."
+
+            if state.cta_open_requested:
+                state.cta_open_requested = False
+                name, _, target = _UI_HOME_CTAS[state.cta_selected]
+                try:
+                    opened = webbrowser.open(target)
+                except Exception:
+                    opened = False
+                state.status_message = (
+                    f"Opened {name}: {target}"
+                    if opened
+                    else f"Could not open {target}; use the URL directly."
+                )
+
+        def _compact_lines(visible_sections: list[Any], line_width: int):
+            lines: list[tuple[str, str]] = []
+            if state.cta_visible and not state.help_visible:
+                lines.extend(
+                    [
+                        ("title", "OPASTRO LINKS @"),
+                        ("blank", ""),
+                        ("body", "j/k move • Enter select • o open • Esc close"),
+                        ("blank", ""),
+                    ]
+                )
+                for idx, (name, description, target) in enumerate(_UI_HOME_CTAS):
+                    marker = glyphs["marker"] if idx == state.cta_selected else " "
+                    kind = "cta_selected" if idx == state.cta_selected else "label"
+                    lines.append((kind, f"{marker} {name}"))
+                    lines.extend(
+                        ("body", f"  {wrapped}")
+                        for wrapped in _wrap_for_width(description, line_width)
+                    )
+                    lines.extend(
+                        ("factor", f"  {wrapped}")
+                        for wrapped in _wrap_for_width(target, line_width)
+                    )
+                    lines.append(("blank", ""))
+                return lines
+            if state.help_visible:
+                return [
+                    ("title", "Compact report controls"),
+                    ("blank", ""),
+                    ("body", "j/k or arrows     Select a section"),
+                    ("body", "Enter             Factor details"),
+                    ("body", "Space/pgup/pgdn  Scroll content"),
+                    ("body", "/                 Filter sections"),
+                    ("body", "r                 Refresh report"),
+                    ("body", "@                 Links and CTAs"),
+                    ("body", "h/?               Close this help"),
+                    ("body", "q/Esc             Quit"),
+                ]
+            if not visible_sections:
+                return [
+                    ("title", "No matching sections"),
+                    ("blank", ""),
+                    ("body", f"No section matches: {state.filter_query}"),
+                    ("body", "Press / to change the filter or c to clear it."),
+                ]
+
+            section = visible_sections[state.selected]
+            lines.extend(
+                [
+                    ("title", section.title),
+                    ("meta", f"Intensity: {section.intensity}"),
+                    ("blank", ""),
+                ]
+            )
+            lines.extend(
+                ("body", wrapped)
+                for wrapped in _wrap_for_width(section.summary, line_width)
+            )
+            lines.append(("blank", ""))
+            for label, values in (
+                ("Highlights", section.highlights[:2]),
+                ("Cautions", section.cautions[:1]),
+                ("Actions", section.actions[:1]),
+            ):
+                lines.append(("label", f"{label}:"))
+                for value in values:
+                    lines.extend(
+                        ("body", wrapped)
+                        for wrapped in _wrap_for_width(f"- {value}", line_width)
+                    )
+                lines.append(("blank", ""))
+            if state.show_factors:
+                lines.append(("label", "Factor drill-down:"))
+                for detail in section.factor_details[:3]:
+                    lines.extend(
+                        ("factor", wrapped)
+                        for wrapped in _wrap_for_width(
+                            f"- {detail.factor_type}={detail.factor_value} ({detail.weight:.2f})",
+                            line_width,
+                        )
+                    )
+            return lines
 
         while True:
             stdscr.erase()
             height, width = stdscr.getmaxyx()
+            star_chars = ".+*" if ascii_mode else ".·*"
+            for index in range(28):
+                star_x = (index * 41 + 13 + frame // 9) % max(1, width)
+                star_y = 2 + ((index * 19 + frame // 16) % max(1, height - 4))
+                if star_y < height - 2:
+                    try:
+                        stdscr.addch(
+                            star_y, star_x, ord(star_chars[index % 3]), theme["stars"]
+                        )
+                    except curses.error:
+                        pass
             visible_sections = _filter_ui_sections(sections, state.filter_query)
             if visible_sections:
                 state.selected = min(state.selected, len(visible_sections) - 1)
-            if width < 72 or height < 10:
+            if height < 10:
                 _safe_add(
                     0,
                     0,
-                    "Terminal too small for the split UI. Resize to at least 72x10.",
+                    "Terminal too small for the UI. Resize to at least 42x10.",
                     max(1, width - 1),
                     theme["accent"],
                 )
@@ -4207,19 +4755,71 @@ def _run_ui(
                     section_count=len(visible_sections),
                     page_height=max(1, height - 5),
                     allow_period_switch=allow_period_switch,
+                    cta_count=len(_UI_HOME_CTAS),
                 ):
                     break
-                if state.filter_requested:
-                    state.filter_requested = False
-                    _prompt_ui_filter(stdscr, state, theme)
-                if state.requested_period and payload_loader:
-                    requested_period = state.requested_period
-                    state.requested_period = None
-                    payload = payload_loader(requested_period)
-                    sections = payload.sections
-                    state.selected = 0
-                    state.show_factors = False
-                    state.scroll_offset = 0
+                _process_pending_actions()
+                continue
+            if width < 72:
+                compact_width = max(18, width - 3)
+                compact_header = (
+                    f"OPASTRO {glyphs['bullet']} {mode_label} {glyphs['bullet']} "
+                    f"{payload.sign} {glyphs['bullet']} {payload.period.value} "
+                    f"{glyphs['bullet']} COMPACT"
+                )
+                _safe_add(0, 0, compact_header, width - 1, theme["header"])
+                try:
+                    stdscr.hline(1, 0, ord(glyphs["rule"]), width - 1)
+                except curses.error:
+                    pass
+                lines = _compact_lines(visible_sections, compact_width)
+                compact_page_h = max(2, height - 5)
+                max_scroll = max(0, len(lines) - compact_page_h)
+                state.scroll_offset = max(0, min(state.scroll_offset, max_scroll))
+                for row, (kind, line) in enumerate(
+                    lines[state.scroll_offset : state.scroll_offset + compact_page_h]
+                ):
+                    y = 2 + row
+                    if y >= height - 2:
+                        break
+                    attr = theme["body"]
+                    if kind in {"title", "label"}:
+                        attr = theme["accent"]
+                    elif kind == "factor":
+                        attr = theme["muted"]
+                    elif kind == "cta_selected":
+                        attr = theme["selected"]
+                    _safe_add(y, 1, line, max(1, width - 2), attr)
+                if state.status_message:
+                    _safe_add(
+                        height - 2,
+                        0,
+                        f"{glyphs['bullet']} {state.status_message}",
+                        width - 1,
+                        theme["muted"],
+                    )
+                _safe_add(
+                    height - 1,
+                    0,
+                    "j/k section  Enter factors  / filter  r refresh  @ links  q quit",
+                    width - 1,
+                    theme["muted"],
+                )
+                stdscr.refresh()
+                key = stdscr.getch()
+                if key == -1:
+                    frame += 1
+                    continue
+                if not _apply_ui_key(
+                    state,
+                    key,
+                    section_count=len(visible_sections),
+                    page_height=compact_page_h,
+                    allow_period_switch=allow_period_switch,
+                    cta_count=len(_UI_HOME_CTAS),
+                ):
+                    break
+                _process_pending_actions()
                 continue
             left_w = max(24, min(38, width // 3))
             right_x = left_w + 2
@@ -4261,7 +4861,25 @@ def _run_ui(
                     stdscr.addch(row, left_w, ord("|"), theme["muted"])
 
             lines: list[tuple[str, str]] = []
-            if state.help_visible:
+            if state.cta_visible and not state.help_visible:
+                lines.extend(
+                    [
+                        ("title", "OPASTRO LINKS @"),
+                        ("blank", ""),
+                        ("body", "Move with arrows or j/k. Enter selects; o opens."),
+                        ("blank", ""),
+                    ]
+                )
+                for idx, (name, description, target) in enumerate(_UI_HOME_CTAS):
+                    marker = glyphs["marker"] if idx == state.cta_selected else " "
+                    kind = "cta_selected" if idx == state.cta_selected else "label"
+                    lines.append((kind, f"{marker} {name}"))
+                    for wrapped in _wrap_for_width(description, right_w):
+                        lines.append(("body", f"  {wrapped}"))
+                    for wrapped in _wrap_for_width(target, right_w):
+                        lines.append(("factor", f"  {wrapped}"))
+                    lines.append(("blank", ""))
+            elif state.help_visible:
                 lines.extend(
                     [
                         ("title", "Keyboard shortcuts"),
@@ -4286,6 +4904,9 @@ def _run_ui(
                         ("body", "/                 Filter sections"),
                         ("body", "c                 Clear section filter"),
                         ("body", "d                 Toggle compact/expanded density"),
+                        ("body", "r                 Refresh the current report"),
+                        ("body", "@                 Open links and CTA drawer"),
+                        ("body", "o                 Open the selected CTA"),
                         (
                             "body",
                             (
@@ -4365,12 +4986,23 @@ def _run_ui(
                     attr = theme["accent"]
                 elif kind == "factor":
                     attr = theme["muted"]
+                elif kind == "cta_selected":
+                    attr = theme["selected"]
                 _safe_add(y, right_x, line, right_w, attr)
 
+            if state.status_message:
+                _safe_add(
+                    height - 2,
+                    0,
+                    f"{glyphs['bullet']} {state.status_message}",
+                    width - 1,
+                    theme["muted"],
+                )
             footer = (
                 f"q/esc quit {glyphs['bullet']} {glyphs['nav']}/j/k section {glyphs['bullet']} "
                 f"enter factors {glyphs['bullet']} pgup/pgdn scroll {glyphs['bullet']} "
-                f"h/? help {glyphs['bullet']} / filter {glyphs['bullet']} d density"
+                f"h/? help {glyphs['bullet']} / filter {glyphs['bullet']} d density {glyphs['bullet']} "
+                f"r refresh {glyphs['bullet']} @ links"
             )
             if allow_period_switch:
                 footer += f" {glyphs['bullet']} 1-4 period"
@@ -4378,25 +5010,19 @@ def _run_ui(
 
             stdscr.refresh()
             key = stdscr.getch()
+            if key == -1:
+                frame += 1
+                continue
             if not _apply_ui_key(
                 state,
                 key,
                 section_count=len(visible_sections),
                 page_height=page_h,
                 allow_period_switch=allow_period_switch,
+                cta_count=len(_UI_HOME_CTAS),
             ):
                 break
-            if state.filter_requested:
-                state.filter_requested = False
-                _prompt_ui_filter(stdscr, state, theme)
-            if state.requested_period and payload_loader:
-                requested_period = state.requested_period
-                state.requested_period = None
-                payload = payload_loader(requested_period)
-                sections = payload.sections
-                state.selected = 0
-                state.show_factors = False
-                state.scroll_offset = 0
+            _process_pending_actions()
 
     curses.wrapper(_ui)
     return 0
@@ -4458,7 +5084,7 @@ def _handle_ui(args: argparse.Namespace) -> int:
             payload, args, reason, getattr(args, "update_info", None)
         )
 
-    terminal_reason = _ui_terminal_reason()
+    terminal_reason = _ui_terminal_reason(min_columns=42)
     if terminal_reason:
         return _render_ui_fallback(
             payload, args, terminal_reason, getattr(args, "update_info", None)

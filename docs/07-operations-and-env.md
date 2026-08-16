@@ -90,6 +90,7 @@ curl -X POST http://127.0.0.1:8000/horoscope \
 # CLI doctor
 opastro doctor
 opastro doctor --json
+opastro catalog --json
 opastro doctor --download-ephemeris
 opastro ui
 # Home deck: / commands, @ links, o open CTA, h/? help, c clear search
@@ -98,7 +99,7 @@ opastro ui
 opastro logger show --limit 10
 
 # Opt-in analytics
-OPASTRO_ANALYTICS=1 opastro catalog
+OPASTRO_ANALYTICS=1 opastro catalog --json
 
 # Run API
 opastro serve --host 127.0.0.1 --port 8000 --reload

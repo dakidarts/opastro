@@ -15,10 +15,23 @@
 
 Behavior:
 - Running `opastro ui` without `--period` opens the animated command home deck.
-- Press `/` to search the full command surface, `@` to browse links and calls
-  to action, `o` to open a selected CTA, `h` or `?` for controls, and `q` or
-  `Esc` to quit.
+- Press `/` to search available CLI actions, `@` to browse links and calls to
+  action, `Enter` to run a selected command, `o` to open a selected CTA,
+  `h` or `?` for controls, and `q` or `Esc` to quit. The active `ui` launcher
+  is deliberately omitted from its own palette.
 - Add `--period daily|weekly|monthly|yearly` to open the report browser.
+- Report mode uses the split layout on wide terminals and a compact
+  single-column layout from 42 columns upward. Resize below that threshold or
+  use static output flags when you need a non-interactive fallback.
+- In the report browser, press `r` to reload the current period. Press `@` to
+  open the in-session links drawer; use `Enter` to select, `o` to open, and
+  `Esc` to close it. The status line confirms refreshes, filters, and link
+  actions without polluting report output.
+- Commands started from the home deck's `/` palette return to a dark,
+  scrollable result page instead of escaping to plain terminal output. Use
+  `/` to find text, `c` to clear the search, `r` to rerun, and `Enter` or `Esc`
+  to return home. Export commands display saved paths while keeping binary
+  PDF/SVG/PNG files on disk.
 
 If the terminal cannot run curses, OpAstro prints the same home deck as a
 static fallback instead of logging a runtime error.
@@ -77,7 +90,11 @@ opastro doctor --fix
 ```
 
 Note:
-- `opastro doctor --json` is useful for CI and machine-readable diagnostics.
+- `opastro doctor --json` is useful for CI and machine-readable diagnostics,
+  including the active OpAstro version, terminal color mode, config directory,
+  analytics state, dependency health, and ephemeris readiness.
+- `opastro catalog --json` exposes the supported periods, sections, signs, and
+  planets for scripts, IDE integrations, and autocomplete tooling.
 
 ### Inspecting uncaught CLI runtime errors
 
