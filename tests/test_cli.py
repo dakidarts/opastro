@@ -5,18 +5,17 @@ import types
 from datetime import date
 
 import horoscope_engine.cli as cli_module
-from horoscope_engine.config import ServiceConfig
-from horoscope_engine.models import HoroscopeRequest, Period
-from horoscope_engine.service import HoroscopeService
-
 from horoscope_engine.cli import (
-    _UIState,
     _apply_ui_key,
     _filter_ui_sections,
     _resolve_batch_signs,
     _ui_glyphs,
+    _UIState,
     main,
 )
+from horoscope_engine.config import ServiceConfig
+from horoscope_engine.models import HoroscopeRequest, Period
+from horoscope_engine.service import HoroscopeService
 
 
 def _snapshot_fingerprint(text: str) -> str:
@@ -898,7 +897,7 @@ def test_ui_curses_loop_handles_period_filter_and_density_in_compact_mode(monkey
     monkeypatch.setattr(cli_module, "curses", FakeCurses)
     code = cli_module._run_ui(
         payload,
-        payload_loader=lambda period: (requested_periods.append(period) or payload),
+        payload_loader=lambda period: requested_periods.append(period) or payload,
     )
     assert code == 0
     assert requested_periods == ["monthly"]
@@ -978,7 +977,7 @@ def test_ui_curses_loop_refreshes_and_opens_report_cta(monkeypatch):
     )
     code = cli_module._run_ui(
         payload,
-        payload_loader=lambda period: (requested_periods.append(period) or payload),
+        payload_loader=lambda period: requested_periods.append(period) or payload,
     )
     assert code == 0
     assert requested_periods == ["daily"]
@@ -1515,8 +1514,8 @@ def test_natal_wheel_svg_split_layout_stacked_changes_dimensions():
 
 
 def test_natal_wheel_parts_zip_endpoint_contains_expected_files():
-    from io import BytesIO
     import zipfile
+    from io import BytesIO
 
     from fastapi.testclient import TestClient
 
